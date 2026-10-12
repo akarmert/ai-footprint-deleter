@@ -1,0 +1,1083 @@
+# AI FOOTPRINT CLEANER
+## v0.2.0b1 — FAZ 2B: FFT/DCT FREQUENCY ANALYSIS ENGINE
+
+# 1. ROLÜN VE GÖREVİN
+
+Sen Senior Software Architect, Senior Computer Vision Engineer, Digital Image Processing Specialist, Signal Processing Engineer, Senior Python Developer, PySide6 Developer, Cybersecurity Engineer, Performance Engineer ve Senior QA Automation Engineer olarak çalışacaksın.
+
+Mevcut AI Footprint Cleaner projesini yeni bir sürüme geliştireceksin.
+
+**Hedef sürüm: v0.2.0b1 — Phase 2B**
+
+Bu sürümün amacı görüntülerin frekans ve blok düzeyindeki matematiksel özelliklerini inceleyen, gerçek algoritmalara dayanan, performansı ölçülebilir bir analiz motoru geliştirmektir.
+
+Oluşturulacak temel bileşenler:
+
+1. FFT Frequency Analyzer
+2. DCT Block Analyzer
+3. Spectral Feature Extractor
+4. Frequency Visualization Engine
+5. Analysis Result Integration
+6. Memory-Safe Spectral Processing
+7. Frequency Analysis UI
+8. Mathematical Validation Tests
+9. Real Image Benchmark Suite
+
+ÖNEMLİ:
+
+Bu geliştirme mevcut projenin üzerine yapılacaktır.
+
+Projeyi sıfırdan oluşturma.
+
+Mevcut metadata temizleme sistemini, C2PA doğrulama motorunu, Dashboard'u, görüntü istatistiklerini ve güvenlik kontrollerini koru.
+
+Yalnızca çalışan, gerçek algoritmalar oluştur.
+
+AI tespit yüzdesi, model adı tahmini, görünmez filigran tespiti veya filigran kaldırma başarısı hakkında doğrulanmamış sonuç üretme.
+
+# 2. MEVCUT PROJE DURUMU
+
+Mevcut geliştirme sürümü: v0.2.0a1
+
+Son raporlanan kontroller:
+
+- 182 başarılı test
+- 0 başarısız test
+- pip check başarılı
+- compileall başarılı
+- Windows onedir EXE oluşturulmuş
+- Frozen smoke test exit 0
+- Son Dashboard güvenlik ve UI düzeltmeleri uygulanmış
+
+Mevcut teknolojiler:
+
+- Python 3.13.12
+- PySide6 6.12.0
+- Pillow 12.3.0
+- c2pa-python 0.38.0
+- pytest 9.1.1
+- PyInstaller 6.22.3
+
+Mevcut sistemler:
+
+- Metadata Scanner
+- Lossless Metadata Cleaner
+- C2PA Reader
+- SHA-256 Source Binding
+- File-backed Snapshot
+- Memory Budget Manager
+- Tiled Image Processing Engine
+- Pixel Statistics Analyzer
+- Histogram Analyzer
+- Analysis Task Scheduler
+- Asynchronous Preview
+- Dashboard Metadata Overview
+- Privacy-Safe Reporting
+- Atomic File Publishing
+
+Başlangıçta bu bilgileri mevcut kaynak kod ve testlerle doğrula.
+
+**182 test başlangıç regresyon referansıdır.** Güncel test sayısı farklıysa sebebini incele.
+
+Mevcut testleri silme veya geçişlerini kolaylaştıracak şekilde değiştirme.
+
+# 3. GELİŞTİRME PRENSİPLERİ
+
+Bu fazda geliştirilen algoritmalar:
+
+- Gerçek matematiksel hesaplama yapmalı.
+- Deterministik sonuçlar üretmeli.
+- Bellek bütçesini dikkate almalı.
+- Qt arayüzüne bağımlı olmamalı.
+- Büyük görüntülerde kontrollü çalışmalı.
+- Analiz sırasında orijinal dosyayı değiştirmemeli.
+- Hata ve iptal durumlarını güvenli yönetmeli.
+- Sıkıştırılmış görüntü dosyasını yeniden kodlamamalı.
+- Metadata temizleme veya C2PA kayıtlarına müdahale etmemeli.
+- Sonuçların kapsamını ve sınırlamalarını raporlamalı.
+
+Bir görüntüde spektral anormallik bulunması, otomatik olarak görüntünün yapay zekâ tarafından üretildiğini kanıtlamaz.
+
+FFT ve DCT analizleri ilk aşamada görüntü özelliklerini ölçen **adli incelemeye yardımcı istatistiksel araçlar** olacaktır.
+
+# 4. BAŞLANGIÇ KAYNAK DENETİMİ
+
+Önce mevcut projenin mimarisini incele.
+
+Özellikle şu alanlara odaklan:
+
+- modules/analysis/
+- modules/quality/
+- app/services/
+- app/workers/
+- app/ui/
+- app/models/
+- modules/metadata/
+- modules/c2pa/
+- tests/
+- scripts/
+
+Aşağıdaki noktaları değerlendir:
+
+1. Mevcut Tile Engine algoritmaları
+2. Bellek rezervasyon modeli
+3. Ortak preview/analiz kaynak yönetimi
+4. Kaynak SHA-256 doğrulaması
+5. Generation Token sistemi
+6. Analiz sonucu veri sözleşmeleri
+7. UI durum geçişleri
+8. Privacy-Safe Report modeli
+
+Yalnızca yeni frekans modüllerini bağlamak için gerekli olan küçük değişiklikleri yap.
+
+# 5. FFT FREQUENCY ANALYZER
+
+Yeni bir FFT analiz modülü oluştur.
+
+Önerilen dosya:
+
+modules/analysis/fft_analyzer.py
+
+Python ekosistemindeki kararlı FFT uygulamalarından yararlan.
+
+Gereksiz yere sıfırdan FFT algoritması geliştirme.
+
+## Temel işlemler
+
+- Görüntüden analiz edilecek kanalın seçilmesi
+- Frekans analizine uygun sayısal matris oluşturulması
+- Gerektiğinde ortalamanın çıkarılması
+- Yapılandırılabilir pencereleme
+- 2D FFT hesaplama
+- FFT shift
+- Magnitude spectrum
+- Power spectrum
+- Logarithmic spectrum visualization
+- Frekans enerjisi özetleri
+
+Kullanılabilecek matematiksel yöntem:
+
+2D Discrete Fourier Transform / Fast Fourier Transform.
+
+Her adımın veri tipi, normalizasyonu ve hesaplama sınırları açık olmalıdır.
+
+## Görüntü hazırlığı
+
+Mevcut RGB/RGBA/L analiz sözleşmelerini kullan.
+
+Başlangıç için mevcut piksel istatistik motoruyla tutarlı bir 8-bit luma dönüşümü tercih et.
+
+BT.601 tabanlı kod-değeri luma kullanıyorsan bunu fiziksel doğrusal ışık luminance değeriyle karıştırma.
+
+Alpha kanalı içeren görüntülerde mevcut alpha politikasına uy.
+
+Ham RGB değerlerini ICC dönüşümü uygulanmış değerler gibi sunma.
+
+## FFT hesaplama stratejisi
+
+40 MP görüntüyü tek seferde devasa bir float64 FFT matrisine dönüştürme.
+
+Mevcut Tile Engine'i kullan.
+
+Başlangıçta 256×256 veya 512×512 boyutlarında frekans analizi pencereleri destekle.
+
+Her karo bağımsız olarak analiz edilebilsin.
+
+Karo düzeyindeki sonuçlardan görüntü geneline ait özetler oluşturulabilsin.
+
+Görüntü kenarlarındaki eksik karoların nasıl işlendiğini belirt.
+
+Gerekirse padding veya kontrollü örnekleme kullan.
+
+Padding, pencereleme ve örnekleme sonuçları etkilediği için bunları analiz metadata'sında belirt.
+
+## Normalizasyon
+
+Magnitude ve power spektrumlarını doğru tanımla.
+
+Log ölçeğini sayısal taşma ve log(0) problemlerine karşı güvenli uygula.
+
+Görselleştirme amacıyla yapılan normalize etme işlemini ham spektral ölçümlerden ayrı tut.
+
+Farklı karoları kıyaslanamaz hâle getiren bağımsız otomatik kontrast işlemlerini yanıltıcı ortak ölçek gibi gösterme.
+
+FFT'nin kendisi AI dedektörü değildir.
+
+# 6. DCT BLOCK ANALYZER
+
+Yeni bir DCT modülü oluştur.
+
+Önerilen dosya:
+
+modules/analysis/dct_analyzer.py
+
+DCT-II algoritmasını uygun normalizasyonla uygula.
+
+Başlangıçta:
+
+- 8×8 DCT blokları
+- İsteğe bağlı 16×16 bloklar
+
+desteklenebilir.
+
+## Ölçülecek bilgiler
+
+- DC coefficient
+- AC coefficient energy
+- Low-frequency energy
+- Mid-frequency energy
+- High-frequency energy
+- Block energy distribution
+- Block variability
+- Frekans bantlarına göre enerji oranları
+
+Düşük, orta ve yüksek frekans bantlarının matematiksel tanımını açıkça belirt.
+
+Örneğin 8×8 DCT katsayılarında bant ayrımının hangi indeks bölgelerine göre yapıldığını dokümante et.
+
+Katsayıları toplarken signed değerlerle enerji değerlerini karıştırma.
+
+Enerji hesaplarında uygun şekilde katsayı karelerini kullan.
+
+## Kritik ayrım
+
+Piksel verisi üzerinden hesaplanan 8×8 DCT değerleri, JPEG dosyasındaki orijinal kuantize edilmiş DCT katsayılarıyla aynı şey değildir.
+
+Bu modülde JPEG bitstream içindeki native katsayıların doğrudan okunduğunu iddia etme.
+
+JPEG dosyası önce decode ediliyorsa, yapılan işlemi açıkça:
+
+"Decoded Pixel DCT Analysis"
+
+olarak tanımla.
+
+Native JPEG coefficient extraction bu fazın kapsamı dışındadır.
+
+# 7. SPECTRAL FEATURE EXTRACTOR
+
+FFT ve DCT sonuçlarını ortak veri sözleşmeleriyle birleştiren bir sistem oluştur.
+
+Önerilen dosya:
+
+modules/analysis/spectral_features.py
+
+Üretilebilecek özet bilgiler:
+
+- Ortalama spektral enerji dağılımı
+- Seçilen frekans bantlarındaki enerji oranları
+- Spektral yoğunluk
+- Bölgesel frekans değişkenliği
+- DCT DC/AC oranları
+- Bloklar arası enerji farklılığı
+- Frekans dağılımındaki belirgin tepe noktaları
+
+Her metriğin matematiksel açıklaması bulunmalı.
+
+Kullanıcıya sunulan metrikler karşılaştırılabilir olacaksa aynı:
+
+- Kanal politikası
+- Pencereleme
+- Karo boyutu
+- Normalizasyon
+- Örnekleme stratejisi
+
+ile hesaplanmalıdır.
+
+Farklı analiz ayarlarından gelen sonuçlar doğrudan karşılaştırılabilir olarak gösterilmemelidir.
+
+## Önemli kural
+
+Bu özelliklerden tek başına:
+
+- AI-generated percentage
+- AI model detection
+- SynthID detected
+- AI footprint removed
+
+sonuçları üretme.
+
+Bu analizler istatistiksel gözlem sağlar.
+
+Gelecekte kalibre edilmiş bir AI dedektörü geliştirilecekse bağımsız eğitim, doğrulama ve hata oranı ölçümleri gerekecektir.
+
+# 8. MEMORY-SAFE FREQUENCY PROCESSING
+
+Mevcut Memory Budget Manager yeni algoritmalarla entegre edilecek.
+
+FFT ve DCT işlemleri ara bellek tahsisleri oluşturabilir.
+
+Bu nedenle her algoritma:
+
+1. İşlem öncesi bellek ihtiyacını tahmin etmeli.
+2. Girdi matrisinin veri tipini bilmeli.
+3. FFT/DCT çıktı matrisi maliyetini hesaplamalı.
+4. Geçici çalışma alanlarını dikkate almalı.
+5. Bütçe rezervasyonu almalı.
+6. Görev tamamlandığında rezervasyonu bırakmalı.
+7. Bütçe karşılanamıyorsa kontrollü davranmalı.
+
+## Kaynak stratejisi
+
+Öncelikle:
+
+- Bounded Tile Processing
+- Tek aktif yüksek maliyetli analiz
+- Kontrollü eşzamanlılık
+- Yeniden kullanılabilir çalışma tamponları
+
+kullan.
+
+Örneğin bazı FFT kütüphaneleri float32 girdilerde bile daha yüksek hassasiyetli çıktılar veya ek tamponlar oluşturabilir.
+
+Gerçek davranışı seçilen kütüphane ve sürüm üzerinde ölç.
+
+Soft budget'ı kesin hard limit olarak gösterme.
+
+Kullanılabilir RAM düşükse:
+
+- Analiz bekletilebilir.
+- Daha küçük analiz penceresi seçilebilir.
+- Örnekleme azaltılabilir.
+- İşlem açık hata ile reddedilebilir.
+
+Native decode veya FFT çağrısı tümüyle kesintiye uğratılamıyorsa bunu belgele.
+
+Mevcut 128 MiB dosya ve 40 MP sınırlarını koru.
+
+# 9. RESOURCE CONTENTION
+
+Mevcut uygulamada:
+
+- Asenkron görsel önizleme
+- Metadata tarama
+- C2PA doğrulama
+- Pixel Statistics
+- Histogram Analysis
+
+bulunuyor.
+
+Yeni FFT/DCT görevleri bunlarla kontrolsüz biçimde aynı anda çalışmamalıdır.
+
+Memory Budget Manager ile Analysis Scheduler'ın ortak kaynak rezervasyonlarını doğrula.
+
+Özellikle:
+
+- İki preview decoder
+- Bir FFT görevi
+- Bir DCT görevi
+- Hızlı dosya değiştirme
+
+senaryolarını test et.
+
+Büyük görüntülerde sistemin aynı anda gereksiz tam çözünürlüklü kopyalar oluşturmasını engelle.
+
+Gerekirse FFT ve DCT görevlerini sıraya al.
+
+Bir görevin diğer görevlerin bellek rezervasyonlarını yanlışlıkla serbest bırakmasını önle.
+
+# 10. SOURCE INTEGRITY & SHA-256
+
+Mevcut file-backed snapshot ve source binding sistemini koru.
+
+Yeni frekans analizi de doğrulanan snapshot üzerinde çalışmalıdır.
+
+Kaynak kimliği:
+
+- Source ID
+- SHA-256
+- Snapshot identity
+- Generation Token
+
+ile ilişkilendirilmelidir.
+
+Kaynak dosya değişirse:
+
+- Eski analiz güncel olarak gösterilmemeli.
+- Yeni görüntüye önceki frekans sonuçları uygulanmamalı.
+- Sonuç geçersiz olarak işaretlenmeli.
+- Gerekirse yeniden analiz istenmeli.
+
+Analiz sırasında orijinal dosya değiştirilmeyecek.
+
+Son kaynak doğrulaması başarılı olmadan işlem tamamlandı gösterilmeyecek.
+
+# 11. ANALYSIS STATE MACHINE
+
+Önceki sürümde düzeltilen ilerleme gösterimi hatasını koru.
+
+Analiz görevleri şu durumları desteklemeli:
+
+- Queued
+- Preparing
+- Running
+- Verifying
+- Completed
+- Cancelled
+- Failed
+- Unsupported
+
+FFT veya DCT karolarının tamamının işlenmesi tek başına görevin doğrulandığı anlamına gelmez.
+
+Son karo işlendiğinde:
+
+**"Kaynak doğrulanıyor…"**
+
+gösterilmeli.
+
+Ancak nihai kaynak bütünlüğü kontrolü başarılı olduğunda:
+
+**"%100 · Doğrulandı"**
+
+gösterilebilir.
+
+İptal ve hatada ilerleme göstergesi yanlışlıkla tamamlanmış durumda kalmamalı.
+
+Bir FFT görevi tamamlandıktan sonra aynı kaynağa ait DCT görevi başarısız olursa iki alt görevin durumunu ayrı göster.
+
+Bütün analizleri otomatik olarak başarılı sayma.
+
+# 12. FREQUENCY VISUALIZATION ENGINE
+
+Frekans analizlerinin sonuçlarını kullanıcıya görsel biçimde sun.
+
+Oluşturulabilecek grafikler:
+
+1. FFT Magnitude Spectrum
+2. Log Magnitude Spectrum
+3. Frequency Energy Distribution
+4. DCT Coefficient Heatmap
+5. Regional Frequency Energy Map
+
+Görselleştirmelerde gerçek hesaplanan matrisler kullanılmalıdır.
+
+Sahte veya dekoratif grafik üretme.
+
+## FFT Spectrogram / Spectrum
+
+Spektrum merkezlemesini ve frekans eksenlerinin anlamını doğru uygula.
+
+Görüntülenen spektrumun:
+
+- Tüm görseli mi
+- Seçilmiş bir karoyu mu
+- Birden fazla karonun özetini mi
+
+temsil ettiğini açıkça göster.
+
+## DCT Heatmap
+
+8×8 katsayı dağılımı görselleştirilebilsin.
+
+DC ve AC bölgeleri ayırt edilebilsin.
+
+Renk skalası ve normalizasyon görünür veya açıklanabilir olmalıdır.
+
+## Regional Frequency Map
+
+Bir görüntünün hangi bölgelerinde daha yoğun yüksek frekans enerjisi olduğu gösterilebilir.
+
+Ancak bunu "AI footprint heatmap" veya "watermark location" olarak adlandırma.
+
+Bu yalnızca seçilen frekans özelliğinin bölgesel görselleştirmesi olacaktır.
+
+# 13. PY SIDE6 UI INTEGRATION
+
+Mevcut sekiz bölümlü navigasyonu ve koyu temayı koru.
+
+Yeni frekans analizlerini mevcut:
+
+**AI Footprint Analysis**
+
+ekranına entegre et.
+
+Dashboard Metadata Overview ekranının mevcut düzenini bozma.
+
+## Önerilen AI Analysis alt sekmeleri
+
+- Pixel Statistics
+- Histogram Analysis
+- FFT Analysis
+- DCT Analysis
+
+Gerekirse mevcut UI mimarisine uygun sekmeli veya bölümlü tasarım kullan.
+
+Kullanıcı FFT Analysis bölümüne geçtiğinde:
+
+- Seçili görüntü
+- Analiz başlatma
+- Analiz ayarları
+- İşlem ilerlemesi
+- FFT grafiği
+- Spektral özellikler
+- Bellek bilgisi
+- Analiz sınırlamaları
+
+görüntülenebilsin.
+
+DCT Analysis ekranında:
+
+- Block size
+- DCT coefficient heatmap
+- DC/AC energy
+- Frequency band distribution
+- Bölgesel analiz
+- Sonuç açıklamaları
+
+bulunsun.
+
+Tüm metinler Türkçe olmalı.
+
+Örneğin:
+
+"FFT Frekans Analizi"
+
+"DCT Blok Analizi"
+
+"Yüksek Frekans Enerjisi"
+
+"Kaynak Doğrulanıyor"
+
+"Analiz Tamamlandı"
+
+"Bu sonuç yapay zekâ üretimi kanıtı değildir."
+
+## UI performansı
+
+Tam çözünürlüklü spektrum matrislerini gereksiz yere Qt widget'larına kopyalama.
+
+Görsel çıktıları ekran çözünürlüğüne uygun sınırlandır.
+
+İşlem süresince ana UI thread donmamalı.
+
+# 14. DASHBOARD REGRESSION
+
+Son geliştirdiğimiz Genel Bakış ekranini koru.
+
+Özellikle:
+
+- Metadata & Provenance Status
+- Dinamik sayaçlar
+- C2PA ayrıntıları
+- Accordion bölümleri
+- Kategori filtreleri
+- Tümünü Aç / Tümünü Kapat
+- Kaynak değişikliği uyarısı
+- Unsupported / Not Checked / Not Found ayrımı
+
+bozulmamalıdır.
+
+Son düzeltmede XMP/IPTC filtreleri için ayrıştırma desteği sınırlı olduğunda yanıltıcı "metadata bulunamadı" mesajı düzeltilmiştir.
+
+Bu davranışı koru.
+
+FFT/DCT sonuçlarını metadata alan sayısına ekleme.
+
+Frekans analizlerini C2PA veya AI üretim beyanlarıyla aynı sonuç türü olarak gösterme.
+
+Dashboard ve yeni frekans analizleri farklı sorumluluklara sahip kalmalıdır.
+
+# 15. DEPENDENCY STRATEGY
+
+Mevcut Faz 2A, Pillow ve Python standard library ile çalışmaktadır.
+
+FFT/DCT için sayısal hesaplama kütüphaneleri gerekebilir.
+
+Tercih edilebilecek seçenekler:
+
+- NumPy
+- SciPy FFT
+
+Önce mevcut bağımlılıkları kontrol et.
+
+Gerekliyse NumPy/SciPy entegrasyonu yap.
+
+Ancak kurulumdan önce:
+
+- Python 3.13 Windows x64 desteğini
+- Uygun wheel varlığını
+- Paket lisanslarını
+- Native DLL gereksinimlerini
+- PyInstaller uyumluluğunu
+- Paket boyutu etkisini
+
+incele.
+
+Sürümleri rastgele sabitleme.
+
+Test edilmiş sürümleri requirements dosyalarına kaydet.
+
+Gereksiz yere:
+
+- PyTorch
+- TensorFlow
+- CUDA
+- Büyük derin öğrenme modelleri
+- Bulut API servisleri
+
+ekleme.
+
+CPU tabanlı analiz öncelikli olmalıdır.
+
+GPU desteği bu faz için zorunlu değildir.
+
+# 16. MATHEMATICAL VALIDATION TESTS
+
+Yeni algoritmaların doğru çalıştığını yalnızca UI üzerinden kontrol etme.
+
+Matematiksel referanslarla karşılaştır.
+
+## FFT testleri
+
+En az şu referans görüntüleri kullan:
+
+**Constant Image**
+
+Sabit görüntünün DC ağırlıklı frekans dağılımını doğrula.
+
+Ortalama çıkarma aktif olduğunda beklenen DC davranışını ayrıca test et.
+
+**Sinusoidal Pattern**
+
+Bilinen frekansta sinüzoidal örüntü oluştur.
+
+FFT tepe noktalarının beklenen frekans koordinatlarına karşılık geldiğini doğrula.
+
+**Checkerboard**
+
+Yüksek frekans örüntüsünün beklenen karakteristiğini kontrol et.
+
+**Impulse Image**
+
+Tek nokta dürtüsünün Fourier magnitude davranışını doğrula.
+
+**Noise Image**
+
+Sabit seed ile deterministik gürültü görüntüleri üret.
+
+Tekrarlı sonuçların tutarlılığını test et.
+
+## DCT testleri
+
+- Constant block
+- Horizontal gradient
+- Vertical gradient
+- Single frequency cosine pattern
+- Checkerboard
+- Zero block
+- Edge block
+
+DCT-II normalizasyonunu referans uygulama ile karşılaştır.
+
+Uygun koşullarda inverse DCT ile yeniden oluşturma hatasını ölç.
+
+Parseval/enerji korunumu ilişkilerini seçilen normalizasyon altında test et.
+
+Floating-point toleranslarını açıkça tanımla.
+
+Sahte kesin eşitlik şartları kullanma.
+
+Görselleştirme için kullanılan log ve kontrast dönüşümlerini ham matematiksel sonuçlarla karıştırma.
+
+# 17. TILED CONSISTENCY TESTS
+
+Aynı görüntü için farklı karo işleme düzenlerinin tutarlılığını test et.
+
+Ancak FFT'nin karo sınırlarına ve pencere boyutuna duyarlı olduğunu unutma.
+
+Farklı karo boyutlarının birebir aynı spektrum üretmesini bekleme.
+
+Bunun yerine:
+
+- Aynı tile planıyla deterministik sonuç
+- Aynı normalizasyon altında doğru enerji hesaplama
+- Doğru karo koordinatları
+- Halo/core ayrımı
+- Kenar karolarının doğru ele alınması
+- Çift sayım olmaması
+- İptal sonrası kaynak temizliği
+
+davranışlarını doğrula.
+
+DCT blokları için kısmi kenar bloklarının padding veya dışlama politikasını açıkça tanımla.
+
+# 18. REAL IMAGE CORPUS & LOW-RAM TESTS
+
+Önceki sürümlerde gerçek fotoğraf ve düşük RAM testleri eksik kalmıştı.
+
+Bu aşamada bu eksikleri mümkün olduğunca kapat.
+
+Test kategorileri:
+
+- Gerçek veya lisanslı fotoğraf JPEG
+- Karmaşık PNG
+- WebP
+- Alpha PNG
+- Grayscale
+- Farklı sıkıştırma oranları
+- Farklı görüntü boyutları
+- Çok düşük detaylı görüntüler
+- Yüksek detaylı görüntüler
+- Tekrarlayan geometrik desenler
+
+Gerçek fotoğraf corpus'u oluşturulamıyorsa bunu eksik olarak bildir.
+
+Sentetik testleri gerçek fotoğraf testi gibi gösterme.
+
+## Çözünürlükler
+
+En az:
+
+- 1920×1080
+- 3840×2160
+- 7680×4320
+- 8000×4999
+
+boyutlarını değerlendir.
+
+40 MP sınırını aşma.
+
+## Bellek profilleri
+
+8 GB, 16 GB ve 32 GB sistemler hedef kullanım senaryoları olarak değerlendirilsin.
+
+Gerçek düşük RAM cihazı mevcut değilse simülasyon ve fiziksel cihaz testlerini ayrı raporla.
+
+Soft budget testinin gerçek 8 GB cihaz üzerinde yapılan testle aynı kanıt değeri taşıdığını iddia etme.
+
+Bütçe aşımında uygulama kontrollü hata vermeli veya görevi güvenli biçimde sıraya almalıdır.
+
+# 19. BENCHMARK SUITE
+
+Yeni bir frekans analiz benchmark sistemi oluştur.
+
+Önerilen dosya:
+
+scripts/benchmark_frequency.py
+
+Ölçülecek alanlar:
+
+- Görüntü formatı
+- Çözünürlük
+- Dosya boyutu
+- Decode süresi
+- FFT işlem süresi
+- DCT işlem süresi
+- Analiz edilen karo sayısı
+- Peak Working Set
+- Tahmini çalışma belleği
+- UI timer aralığı
+- Görev iptal gecikmesi
+- Kaynak SHA-256 bütünlüğü
+- Sonuç deterministikliği
+
+Ölçümleri mümkün olduğunca ayrı süreçlerde gerçekleştir.
+
+En az üç tekrar kullan; daha geniş benchmark yapılabiliyorsa tercih et.
+
+Ham sonuçları JSON olarak kaydet.
+
+Ortalama, minimum ve maksimum değerleri raporla.
+
+Az sayıda örnekten güvenilir p95 veya p99 SLA sonucu üretme.
+
+Mevcut Faz 2A benchmarklarıyla yeni iş akışlarını doğrudan karşılaştırma; yalnızca gerçekten eşdeğer senaryolarda karşılaştırma yap.
+
+# 20. PRIVACY & SECURITY
+
+FFT/DCT analiz sistemi:
+
+- Orijinal görüntüyü değiştirmeyecek.
+- Metadata silmeyecek.
+- Yeni C2PA manifesti oluşturmayacak.
+- Görüntüyü çevrimiçi servise göndermeyecek.
+- Analiz verilerini otomatik olarak dışarı aktarmayacak.
+
+Yeni veriler Privacy-Safe Report modeline uyacak.
+
+Privacy-Safe Report:
+
+- Kaynak dosya yolunu
+- Kaynak SHA-256 değerini
+- Ham kişisel metadata alanlarını
+- Prompt içeriğini
+- GPS koordinatlarını
+
+otomatik içermemelidir.
+
+Spektral grafikler görüntü içeriği hakkında bilgi açığa çıkarabileceği için bunların dışa aktarımı açık kullanıcı işlemi gerektirmelidir.
+
+Eski C2PA güvenlik sınırlarını ve telif bilgisi korumalarını değiştirme.
+
+Native C2PA ağ izolasyonunun eksik doğrulama durumunu açıkça koru.
+
+# 21. REGRESSION TESTS
+
+Yeni geliştirme sırasında mevcut **182 testin tamamı korunmalıdır.**
+
+Yeni test kategorileri:
+
+A. FFT Mathematical Accuracy
+
+B. DCT Mathematical Accuracy
+
+C. Spectral Feature Correctness
+
+D. Tiled Processing
+
+E. Memory Budget
+
+F. Scheduler & Cancellation
+
+G. Source SHA-256 Binding
+
+H. UI Progress & Verification
+
+I. Dashboard Regression
+
+J. Metadata/C2PA Regression
+
+K. Privacy-Safe Report
+
+L. Windows Frozen Smoke
+
+Özellikle şu eski güvenlik düzeltmelerini tekrar test et:
+
+1. Custom Metadata Cleaning SHA-256 koruması
+2. Stale generation kontrolü
+3. Son doğrulamadan önce %100 gösterilmemesi
+4. XMP/IPTC eksik kapsam mesajlarının doğru gösterilmesi
+5. Kaynak değiştiğinde sonuçların geçersiz olması
+6. İptal ve hata sonrası worker temizliği
+7. Kayıpsız metadata temizleme
+8. C2PA ve hak koruması
+
+Eski 182 testin çalıştığını ayrıca doğrula.
+
+Yeni testlerin tamamını eski test takımıyla birlikte çalıştır.
+
+# 22. WINDOWS BUILD VALIDATION
+
+Geliştirme sonunda mevcut PyInstaller onedir EXE'yi yeniden üret.
+
+Kontrol et:
+
+- NumPy/SciPy native DLL dosyaları
+- Qt platform pluginleri
+- c2pa native binary
+- Assets
+- Türkçe karakterler
+- FFT/DCT ekranları
+- Gerçek analiz akışı
+- Metadata temizleme
+- Privacy-Safe JSON raporu
+
+Gerçek Windows Qt platformunda uygulamayı çalıştır.
+
+Frekans analiz ekranının görüntülerini oluştur ve incele.
+
+980×720 ve 1320×900 gibi farklı pencere boyutlarında kontrol yap.
+
+Temiz Windows makinesinde çalıştırılmadıysa ticari dağıtım testi tamamlandı deme.
+
+# 23. DOCUMENTATION
+
+Aşağıdaki dosyaları oluştur veya güncelle:
+
+- README.md
+- CHANGELOG.md
+- docs/FREQUENCY_ARCHITECTURE.md
+- docs/FFT_DCT_METHODS.md
+- docs/FREQUENCY_TEST_RESULTS.md
+- docs/FREQUENCY_PERFORMANCE.md
+- docs/MEMORY_MODEL.md
+- docs/KNOWN_LIMITATIONS.md
+
+Belgelerde açıklanması gerekenler:
+
+- FFT metodolojisi
+- DCT metodolojisi
+- Karo analizi
+- Pencereleme ve padding
+- Frekans normalizasyonu
+- Kanal/luma politikası
+- Matematiksel doğrulama sonuçları
+- Gerçek benchmark sonuçları
+- Bellek sınırları
+- Kaynak bütünlüğü
+- Desteklenmeyen analiz türleri
+
+Mevcut Dashboard, güvenlik ve Faz 2A belgelerini koru.
+
+# 24. ACCEPTANCE CRITERIA
+
+Faz 2B'nin tamamlandığını söylemeden önce:
+
+1. Eski 182 testin tamamı geçmeli.
+2. FFT algoritması gerçek veriyle çalışmalı.
+3. DCT algoritması gerçek veriyle çalışmalı.
+4. Referans matematiksel testler başarılı olmalı.
+5. FFT/DCT veri sözleşmeleri Qt bağımsız olmalı.
+6. Analiz hesaplamaları mevcut bellek bütçesine uymalı veya kontrollü reddedilmeli.
+7. Büyük görüntüler güvenli biçimde ele alınmalı.
+8. Kaynak SHA-256 bütünlüğü korunmalı.
+9. Metadata/C2PA motoru bozulmamalı.
+10. Dashboard ve kategori filtreleri korunmalı.
+11. UI gerçek grafikler göstermeli.
+12. İlerleme %100 yalnız doğrulama sonrasında gösterilmeli.
+13. İptal ve hata senaryoları doğru çalışmalı.
+14. Eski generation sonuçları yeni görüntüye uygulanmamalı.
+15. Privacy-Safe Report davranışı korunmalı.
+16. Gerçek performans ölçümleri raporlanmalı.
+17. Windows EXE oluşturulmalı ve smoke test yapılmalı.
+18. Unsupported özellikler sahte veri üretmemeli.
+
+Bu gereksinimler karşılanmadan PASS sonucu verme.
+
+Native ağ izolasyonu veya temiz Windows dağıtımı gibi önceden açık kalan konular test edilmediyse bunları ayrıca raporla.
+
+# 25. GELİŞTİRME SIRASI
+
+ADIM 1 — Mevcut kaynak kodunu incele.
+
+ADIM 2 — Başlangıç 182 testi çalıştır.
+
+ADIM 3 — NumPy/SciPy gereksinimlerini doğrula.
+
+ADIM 4 — FFT algoritmasını geliştir ve matematiksel testlerini oluştur.
+
+ADIM 5 — DCT algoritmasını geliştir ve matematiksel testlerini oluştur.
+
+ADIM 6 — Spectral Feature Extractor geliştir.
+
+ADIM 7 — Memory Budget ve Scheduler entegrasyonu yap.
+
+ADIM 8 — Source Integrity ve progress state kontrollerini bağla.
+
+ADIM 9 — FFT/DCT veri modellerini UI'ya entegre et.
+
+ADIM 10 — Grafik ve ısı haritalarını oluştur.
+
+ADIM 11 — Yeni otomatik testleri çalıştır.
+
+ADIM 12 — Gerçek görüntü ve düşük RAM senaryolarını değerlendir.
+
+ADIM 13 — Performans benchmarklarını gerçekleştir.
+
+ADIM 14 — Windows EXE'yi yeniden üret.
+
+ADIM 15 — Frozen smoke testini gerçekleştir.
+
+ADIM 16 — Kod incelemesi ve regresyon denetimi yap.
+
+ADIM 17 — Belgeleri güncelle.
+
+ADIM 18 — Son kabul raporunu hazırla.
+
+# 26. SON RAPOR FORMATI
+
+Çalışma sonunda aşağıdaki başlıklarla rapor oluştur.
+
+## A. Version Information
+
+- Önceki sürüm
+- Yeni sürüm
+- Python ve Windows sürümü
+- Eklenen bağımlılıklar
+
+## B. Architecture
+
+- Yeni FFT/DCT modülleri
+- Analiz motoru bağlantıları
+- Bellek ve scheduler entegrasyonu
+
+## C. Algorithms
+
+- FFT implementasyonu
+- DCT implementasyonu
+- Normalizasyon
+- Pencereleme
+- Kullanılan tile boyutları
+- Analiz edilen istatistikler
+
+## D. Mathematical Validation
+
+- Referans testler
+- Numerik toleranslar
+- Başarılı/başarısız durumlar
+- Bilinen metodolojik sınırlamalar
+
+## E. Memory & Performance
+
+- FFT süreleri
+- DCT süreleri
+- Peak RAM
+- UI gecikmesi
+- Test görüntüleri
+- Bellek darboğazları
+
+## F. Security
+
+- Source SHA-256 bütünlüğü
+- Snapshot doğrulaması
+- Eski generation kontrolü
+- Progress state
+- Metadata/C2PA regresyonları
+
+## G. Test Results
+
+- Başlangıç: 182 test
+- Yeni testler
+- Toplam başarılı test
+- Failed / skipped
+- pip check
+- compileall
+
+## H. Windows Validation
+
+- Gerçek Qt kontrolü
+- EXE build
+- Frozen smoke
+- Eksik platform testleri
+
+## I. Known Limitations
+
+- Matematiksel analiz sınırlamaları
+- Donanım ve bellek sınırları
+- Gerçek fotoğraf corpus eksikleri
+- Native ağ izolasyonu
+- Ticari dağıtım eksikleri
+
+## J. Phase 2C Readiness
+
+- Noise Analysis için hazırlık
+- Texture Analysis için hazırlık
+- Eksik veri sözleşmeleri
+- Tavsiye edilen sonraki adımlar
+
+Sonuç durumunu:
+
+PASS / PARTIAL / FAIL
+
+olarak belirt.
+
+Test yürütmesi, statik inceleme, benchmark ve Windows doğrulamasını ayrı kanıt türleri olarak sun.
+
+# 27. SON TALİMAT
+
+ŞİMDİ AI FOOTPRINT CLEANER PROJESİNİ İNCELE VE v0.2.0b1 FAZ 2B GELİŞTİRMESİNE BAŞLA.
+
+Mevcut 182 testi koru.
+
+Dashboard'u ve bütün metadata güvenlik sistemlerini muhafaza et.
+
+FFT ve DCT algoritmalarını gerçek matematiksel hesaplamalarla oluştur.
+
+Karo tabanlı ve bellek bütçeli işleme kullan.
+
+Doğrulama testleri olmadan sonuç üretme.
+
+Yapay zekâ tespit yüzdesi veya filigran bulundu iddiası oluşturma.
+
+Mevcut güvenlik düzeltmelerini gevşetme.
+
+**HEDEF: AI Footprint Cleaner'ı görüntülerin spektral ve yapısal özelliklerini analiz edebilen, kaynak bütünlüğünü koruyan, doğrulanabilir ve ölçeklenebilir bir görüntü inceleme platformuna dönüştürmek.**

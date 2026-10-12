@@ -1,0 +1,241 @@
+{
+  "platform": "Windows-11-10.0.26200-SP0",
+  "processor": "Intel64 Family 6 Model 198 Stepping 2, GenuineIntel",
+  "python": "3.13.12",
+  "repeats": 3,
+  "method": "separate process per case; process peak includes fixture/decode/engine/UI setup; synthetic only; no p95 from three samples",
+  "cases": [
+    {
+      "kind": "uniform",
+      "width": 1920,
+      "height": 1080,
+      "file_bytes": 8594,
+      "decode_seconds": 0.0022370999795384705,
+      "analysis_seconds": [
+        0.022052999993320554,
+        0.017777200002456084,
+        0.017747300007613376
+      ],
+      "analysis_min": 0.017747300007613376,
+      "analysis_max": 0.022052999993320554,
+      "analysis_mean": 0.019192500001130004,
+      "tiles_processed": 12,
+      "status": "Complete",
+      "memory_estimate": 47108900,
+      "memory": {
+        "peak_working_set_bytes": 258125824,
+        "working_set_bytes": 148336640
+      },
+      "results_consistent": true,
+      "source_preserved": true,
+      "cancelled_at_checkpoint": true,
+      "ui_seconds": 0.024602299992693588,
+      "ui_timer_ticks": 2,
+      "ui_max_tick_gap_seconds": 0.010768000007374212,
+      "ui_status": "Complete"
+    },
+    {
+      "kind": "uniform",
+      "width": 3840,
+      "height": 2160,
+      "file_bytes": 29373,
+      "decode_seconds": 0.008306100004119799,
+      "analysis_seconds": [
+        0.06914829998277128,
+        0.06468559999484569,
+        0.06633619999047369
+      ],
+      "analysis_min": 0.06468559999484569,
+      "analysis_max": 0.06914829998277128,
+      "analysis_mean": 0.06672336665603022,
+      "tiles_processed": 40,
+      "status": "Complete",
+      "memory_estimate": 72033658,
+      "memory": {
+        "peak_working_set_bytes": 260243456,
+        "working_set_bytes": 150720512
+      },
+      "results_consistent": true,
+      "source_preserved": true,
+      "cancelled_at_checkpoint": true,
+      "ui_seconds": 0.07204959998489358,
+      "ui_timer_ticks": 6,
+      "ui_max_tick_gap_seconds": 0.010763600002974272,
+      "ui_status": "Complete"
+    },
+    {
+      "kind": "uniform",
+      "width": 7680,
+      "height": 4320,
+      "file_bytes": 107237,
+      "decode_seconds": 0.03955440002027899,
+      "analysis_seconds": [
+        0.25462100000004284,
+        0.2539071000064723,
+        0.2497379000124056
+      ],
+      "analysis_min": 0.2497379000124056,
+      "analysis_max": 0.25462100000004284,
+      "analysis_mean": 0.25275533333964023,
+      "tiles_processed": 135,
+      "status": "Complete",
+      "memory_estimate": 171722186,
+      "memory": {
+        "peak_working_set_bytes": 420171776,
+        "working_set_bytes": 150036480
+      },
+      "results_consistent": true,
+      "source_preserved": true,
+      "cancelled_at_checkpoint": true,
+      "ui_seconds": 0.2953251000144519,
+      "ui_timer_ticks": 28,
+      "ui_max_tick_gap_seconds": 0.01435969999874942,
+      "ui_status": "Complete"
+    },
+    {
+      "kind": "uniform",
+      "width": 8000,
+      "height": 4999,
+      "file_bytes": 126588,
+      "decode_seconds": 0.042681499995524064,
+      "analysis_seconds": [
+        0.3077060999930836,
+        0.3362532999890391,
+        0.2952868999855127
+      ],
+      "analysis_min": 0.2952868999855127,
+      "analysis_max": 0.3362532999890391,
+      "analysis_mean": 0.3130820999892118,
+      "tiles_processed": 160,
+      "status": "Complete",
+      "memory_estimate": 199018488,
+      "memory": {
+        "peak_working_set_bytes": 467070976,
+        "working_set_bytes": 150028288
+      },
+      "results_consistent": true,
+      "source_preserved": true,
+      "cancelled_at_checkpoint": true,
+      "ui_seconds": 0.30728990002535284,
+      "ui_timer_ticks": 30,
+      "ui_max_tick_gap_seconds": 0.011800399981439114,
+      "ui_status": "Complete"
+    },
+    {
+      "kind": "complex",
+      "width": 1920,
+      "height": 1080,
+      "file_bytes": 66418,
+      "decode_seconds": 0.00919189999694936,
+      "analysis_seconds": [
+        0.02667650001239963,
+        0.021953599993139505,
+        0.022456400009104982
+      ],
+      "analysis_min": 0.021953599993139505,
+      "analysis_max": 0.02667650001239963,
+      "analysis_mean": 0.02369550000488137,
+      "tiles_processed": 12,
+      "status": "Complete",
+      "memory_estimate": 47224548,
+      "memory": {
+        "peak_working_set_bytes": 249167872,
+        "working_set_bytes": 139231232
+      },
+      "results_consistent": true,
+      "source_preserved": true,
+      "cancelled_at_checkpoint": true,
+      "ui_seconds": 0.031391299999086186,
+      "ui_timer_ticks": 2,
+      "ui_max_tick_gap_seconds": 0.010687200003303587,
+      "ui_status": "Complete"
+    },
+    {
+      "kind": "jpeg",
+      "width": 1920,
+      "height": 1080,
+      "file_bytes": 1124145,
+      "decode_seconds": 0.010138399986317381,
+      "analysis_seconds": [
+        0.0302885000128299,
+        0.02483589999610558,
+        0.026967700017848983
+      ],
+      "analysis_min": 0.02483589999610558,
+      "analysis_max": 0.0302885000128299,
+      "analysis_mean": 0.02736403334226149,
+      "tiles_processed": 12,
+      "status": "Complete",
+      "memory_estimate": 49340002,
+      "memory": {
+        "peak_working_set_bytes": 243703808,
+        "working_set_bytes": 133922816
+      },
+      "results_consistent": true,
+      "source_preserved": true,
+      "cancelled_at_checkpoint": true,
+      "ui_seconds": 0.05659590000868775,
+      "ui_timer_ticks": 3,
+      "ui_max_tick_gap_seconds": 0.02265540001098998,
+      "ui_status": "Complete"
+    },
+    {
+      "kind": "webp",
+      "width": 1920,
+      "height": 1080,
+      "file_bytes": 1225156,
+      "decode_seconds": 0.07958799999323674,
+      "analysis_seconds": [
+        0.10348389999126084,
+        0.09741200000280514,
+        0.09333780000451952
+      ],
+      "analysis_min": 0.09333780000451952,
+      "analysis_max": 0.10348389999126084,
+      "analysis_mean": 0.0980778999995285,
+      "tiles_processed": 12,
+      "status": "Complete",
+      "memory_estimate": 49542024,
+      "memory": {
+        "peak_working_set_bytes": 276848640,
+        "working_set_bytes": 166998016
+      },
+      "results_consistent": true,
+      "source_preserved": true,
+      "cancelled_at_checkpoint": true,
+      "ui_seconds": 0.102391099993838,
+      "ui_timer_ticks": 9,
+      "ui_max_tick_gap_seconds": 0.010903299989877269,
+      "ui_status": "Complete"
+    },
+    {
+      "kind": "alpha",
+      "width": 1920,
+      "height": 1080,
+      "file_bytes": 10624,
+      "decode_seconds": 0.0030636999872513115,
+      "analysis_seconds": [
+        0.021343600004911423,
+        0.017830299999332055,
+        0.01776889999746345
+      ],
+      "analysis_min": 0.01776889999746345,
+      "analysis_max": 0.021343600004911423,
+      "analysis_mean": 0.01898093333390231,
+      "tiles_processed": 12,
+      "status": "Complete",
+      "memory_estimate": 47112960,
+      "memory": {
+        "peak_working_set_bytes": 260198400,
+        "working_set_bytes": 150343680
+      },
+      "results_consistent": true,
+      "source_preserved": true,
+      "cancelled_at_checkpoint": true,
+      "ui_seconds": 0.027739100012695417,
+      "ui_timer_ticks": 2,
+      "ui_max_tick_gap_seconds": 0.01079349999781698,
+      "ui_status": "Complete"
+    }
+  ]
+}

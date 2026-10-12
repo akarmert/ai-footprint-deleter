@@ -1,0 +1,468 @@
+{
+  "platform": "Windows-11-10.0.26200-SP0",
+  "processor": "Intel64 Family 6 Model 198 Stepping 2, GenuineIntel",
+  "python": "3.13.12",
+  "repeats": 3,
+  "fixture": "synthetic only; no photo corpus",
+  "cases": [
+    {
+      "kind": "uniform",
+      "width": 1920,
+      "height": 1080,
+      "bytes": 8594,
+      "numpy": "2.5.4",
+      "dtype": "float64/complex128",
+      "options": {
+        "tile_size": 512,
+        "window": "hann",
+        "subtract_mean": true,
+        "radial_bins": 32
+      },
+      "durations": [
+        0.9792309000040404,
+        0.9574040999868885,
+        0.9658500999794342
+      ],
+      "mean_seconds": 0.9674950333234543,
+      "timings": [
+        {
+          "decode": 0.0020800999482162297,
+          "fft": 0.45909730007406324,
+          "dct": 0.06915129983099177,
+          "rapsd": 0.16218899987870827
+        },
+        {
+          "decode": 0.002115700044669211,
+          "fft": 0.45010519988136366,
+          "dct": 0.06982790026813745,
+          "rapsd": 0.1621968998806551
+        },
+        {
+          "decode": 0.002489300037268549,
+          "fft": 0.45384410000406206,
+          "dct": 0.07028729998273775,
+          "rapsd": 0.16561770008411258
+        }
+      ],
+      "visualization_seconds": 0.01042010000674054,
+      "memory": {
+        "peak_working_set_bytes": 292904960,
+        "working_set_bytes": 168075264
+      },
+      "tile_count": 12,
+      "cancelled": true,
+      "cancel_latency": 0.002085599990095943,
+      "source_preserved": true,
+      "ui_status": "Completed",
+      "ui_max_tick_gap_seconds": 0.03373970004031435
+    },
+    {
+      "kind": "uniform",
+      "width": 3840,
+      "height": 2160,
+      "bytes": 29373,
+      "numpy": "2.5.4",
+      "dtype": "float64/complex128",
+      "options": {
+        "tile_size": 512,
+        "window": "hann",
+        "subtract_mean": true,
+        "radial_bins": 32
+      },
+      "durations": [
+        3.310536700009834,
+        3.295963699987624,
+        3.282687500002794
+      ],
+      "mean_seconds": 3.2963959666667506,
+      "timings": [
+        {
+          "decode": 0.008266100019682199,
+          "fft": 1.5276908996747807,
+          "dct": 0.27129460009746253,
+          "rapsd": 0.5553162002470344
+        },
+        {
+          "decode": 0.008098599966615438,
+          "fft": 1.5253890001331456,
+          "dct": 0.2707045000861399,
+          "rapsd": 0.5476300995796919
+        },
+        {
+          "decode": 0.008315899991430342,
+          "fft": 1.5139818001771346,
+          "dct": 0.27227000013226643,
+          "rapsd": 0.5504063003463671
+        }
+      ],
+      "visualization_seconds": 0.012209400010760874,
+      "memory": {
+        "peak_working_set_bytes": 292765696,
+        "working_set_bytes": 168841216
+      },
+      "tile_count": 40,
+      "cancelled": true,
+      "cancel_latency": 0.0030551000381819904,
+      "source_preserved": true,
+      "ui_status": "Completed",
+      "ui_max_tick_gap_seconds": 0.038043799984734505
+    },
+    {
+      "kind": "uniform",
+      "width": 7680,
+      "height": 4320,
+      "bytes": 107237,
+      "numpy": "2.5.4",
+      "dtype": "float64/complex128",
+      "options": {
+        "tile_size": 512,
+        "window": "hann",
+        "subtract_mean": true,
+        "radial_bins": 32
+      },
+      "durations": [
+        11.894815000006929,
+        11.662511900009122,
+        11.588425900030416
+      ],
+      "mean_seconds": 11.715250933348822,
+      "timings": [
+        {
+          "decode": 0.03776340000331402,
+          "fft": 5.2998812004807405,
+          "dct": 1.1180134998285212,
+          "rapsd": 1.8814348996966146
+        },
+        {
+          "decode": 0.03434549999656156,
+          "fft": 5.168141899746843,
+          "dct": 1.0926492997677997,
+          "rapsd": 1.8698943998897448
+        },
+        {
+          "decode": 0.033242900040932,
+          "fft": 5.172351900313515,
+          "dct": 1.0890128005412407,
+          "rapsd": 1.8612065995112062
+        }
+      ],
+      "visualization_seconds": 0.012485100014600903,
+      "memory": {
+        "peak_working_set_bytes": 438501376,
+        "working_set_bytes": 157458432
+      },
+      "tile_count": 135,
+      "cancelled": true,
+      "cancel_latency": 0.0070377999800257385,
+      "source_preserved": true,
+      "ui_status": "Completed",
+      "ui_max_tick_gap_seconds": 0.04056479997234419
+    },
+    {
+      "kind": "uniform",
+      "width": 8000,
+      "height": 4999,
+      "bytes": 126588,
+      "numpy": "2.5.4",
+      "dtype": "float64/complex128",
+      "options": {
+        "tile_size": 512,
+        "window": "hann",
+        "subtract_mean": true,
+        "radial_bins": 32
+      },
+      "durations": [
+        13.544350799988024,
+        14.468111300026067,
+        12.871354200004134
+      ],
+      "mean_seconds": 13.627938766672742,
+      "timings": [
+        {
+          "decode": 0.040676800010260195,
+          "fft": 6.238088400219567,
+          "dct": 1.320493100793101,
+          "rapsd": 2.322436799237039
+        },
+        {
+          "decode": 0.0891196999582462,
+          "fft": 6.69508170010522,
+          "dct": 1.4209923995658755,
+          "rapsd": 2.5894728001439944
+        },
+        {
+          "decode": 0.06793369998922572,
+          "fft": 5.881943299958948,
+          "dct": 1.230569200241007,
+          "rapsd": 2.3086504995008
+        }
+      ],
+      "visualization_seconds": 0.012956799997482449,
+      "memory": {
+        "peak_working_set_bytes": 484700160,
+        "working_set_bytes": 166121472
+      },
+      "tile_count": 160,
+      "cancelled": true,
+      "cancel_latency": 0.007808299968019128,
+      "source_preserved": true,
+      "ui_status": "Completed",
+      "ui_max_tick_gap_seconds": 0.048024000017903745
+    },
+    {
+      "kind": "complex",
+      "width": 1920,
+      "height": 1080,
+      "bytes": 66418,
+      "numpy": "2.5.4",
+      "dtype": "float64/complex128",
+      "options": {
+        "tile_size": 512,
+        "window": "hann",
+        "subtract_mean": true,
+        "radial_bins": 32
+      },
+      "durations": [
+        0.9236368999700062,
+        0.9545426999684423,
+        1.0450154999853112
+      ],
+      "mean_seconds": 0.9743983666412532,
+      "timings": [
+        {
+          "decode": 0.008777999959420413,
+          "fft": 0.43169410002883524,
+          "dct": 0.06307669979287311,
+          "rapsd": 0.1541646997211501
+        },
+        {
+          "decode": 0.008966900000814348,
+          "fft": 0.4539185998728499,
+          "dct": 0.06610539997927845,
+          "rapsd": 0.15785150002921
+        },
+        {
+          "decode": 0.008825700031593442,
+          "fft": 0.4967858999152668,
+          "dct": 0.06832809996558353,
+          "rapsd": 0.18434440006967634
+        }
+      ],
+      "visualization_seconds": 0.022477999969851226,
+      "memory": {
+        "peak_working_set_bytes": 293191680,
+        "working_set_bytes": 167788544
+      },
+      "tile_count": 12,
+      "cancelled": true,
+      "cancel_latency": 0.002875100006349385,
+      "source_preserved": true,
+      "ui_status": "Completed",
+      "ui_max_tick_gap_seconds": 0.05458570003975183
+    },
+    {
+      "kind": "jpeg",
+      "width": 1920,
+      "height": 1080,
+      "bytes": 1124145,
+      "numpy": "2.5.4",
+      "dtype": "float64/complex128",
+      "options": {
+        "tile_size": 512,
+        "window": "hann",
+        "subtract_mean": true,
+        "radial_bins": 32
+      },
+      "durations": [
+        0.9580996999866329,
+        0.925218699965626,
+        1.0039871000335552
+      ],
+      "mean_seconds": 0.9624351666619381,
+      "timings": [
+        {
+          "decode": 0.009873800037894398,
+          "fft": 0.4447358002071269,
+          "dct": 0.06634359993040562,
+          "rapsd": 0.15628070005914196
+        },
+        {
+          "decode": 0.009757700026966631,
+          "fft": 0.43561129982117563,
+          "dct": 0.06442529987543821,
+          "rapsd": 0.1562254002201371
+        },
+        {
+          "decode": 0.009704100026283413,
+          "fft": 0.47717199998442084,
+          "dct": 0.06898009980795905,
+          "rapsd": 0.174536700185854
+        }
+      ],
+      "visualization_seconds": 0.014080900000408292,
+      "memory": {
+        "peak_working_set_bytes": 291815424,
+        "working_set_bytes": 167124992
+      },
+      "tile_count": 12,
+      "cancelled": true,
+      "cancel_latency": 0.002495800028555095,
+      "source_preserved": true,
+      "ui_status": "Completed",
+      "ui_max_tick_gap_seconds": 0.03760419995523989
+    },
+    {
+      "kind": "webp",
+      "width": 1920,
+      "height": 1080,
+      "bytes": 1225156,
+      "numpy": "2.5.4",
+      "dtype": "float64/complex128",
+      "options": {
+        "tile_size": 512,
+        "window": "hann",
+        "subtract_mean": true,
+        "radial_bins": 32
+      },
+      "durations": [
+        1.0252300999709405,
+        0.9891218999982812,
+        0.911468899983447
+      ],
+      "mean_seconds": 0.9752736333175562,
+      "timings": [
+        {
+          "decode": 0.0764688000199385,
+          "fft": 0.4452550998539664,
+          "dct": 0.06653970014303923,
+          "rapsd": 0.15701880014967173
+        },
+        {
+          "decode": 0.07604060001904145,
+          "fft": 0.42904869973426685,
+          "dct": 0.06617179996101186,
+          "rapsd": 0.1558889002772048
+        },
+        {
+          "decode": 0.07459630002267659,
+          "fft": 0.40438099997118115,
+          "dct": 0.05922260001534596,
+          "rapsd": 0.15020800021011382
+        }
+      ],
+      "visualization_seconds": 0.015096799994353205,
+      "memory": {
+        "peak_working_set_bytes": 291520512,
+        "working_set_bytes": 166727680
+      },
+      "tile_count": 12,
+      "cancelled": true,
+      "cancel_latency": 0.0027713000308722258,
+      "source_preserved": true,
+      "ui_status": "Completed",
+      "ui_max_tick_gap_seconds": 0.03500180004630238
+    },
+    {
+      "kind": "alpha",
+      "width": 1920,
+      "height": 1080,
+      "bytes": 10624,
+      "numpy": "2.5.4",
+      "dtype": "float64/complex128",
+      "options": {
+        "tile_size": 512,
+        "window": "hann",
+        "subtract_mean": true,
+        "radial_bins": 32
+      },
+      "durations": [
+        0.9353702999651432,
+        0.9430158999748528,
+        0.9362974999821745
+      ],
+      "mean_seconds": 0.9382278999740569,
+      "timings": [
+        {
+          "decode": 0.0026360999909229577,
+          "fft": 0.4352612997754477,
+          "dct": 0.06390890019247308,
+          "rapsd": 0.15438090002862737
+        },
+        {
+          "decode": 0.00254239997593686,
+          "fft": 0.43856830010190606,
+          "dct": 0.06596400012494996,
+          "rapsd": 0.15757439989829436
+        },
+        {
+          "decode": 0.002485299948602915,
+          "fft": 0.43286030023591593,
+          "dct": 0.06458880024729297,
+          "rapsd": 0.16047709988197312
+        }
+      ],
+      "visualization_seconds": 0.016291199950501323,
+      "memory": {
+        "peak_working_set_bytes": 291270656,
+        "working_set_bytes": 166457344
+      },
+      "tile_count": 12,
+      "cancelled": true,
+      "cancel_latency": 0.0028125999961048365,
+      "source_preserved": true,
+      "ui_status": "Completed",
+      "ui_max_tick_gap_seconds": 0.03693030000431463
+    },
+    {
+      "kind": "gray",
+      "width": 1920,
+      "height": 1080,
+      "bytes": 17108,
+      "numpy": "2.5.4",
+      "dtype": "float64/complex128",
+      "options": {
+        "tile_size": 512,
+        "window": "hann",
+        "subtract_mean": true,
+        "radial_bins": 32
+      },
+      "durations": [
+        0.8619379000156187,
+        0.8509149000165053,
+        0.8600295000360347
+      ],
+      "mean_seconds": 0.8576274333560528,
+      "timings": [
+        {
+          "decode": 0.0036838999949395657,
+          "fft": 0.44819850008934736,
+          "dct": 0.06788859993685037,
+          "rapsd": 0.1583548997878097
+        },
+        {
+          "decode": 0.003778600017540157,
+          "fft": 0.44875619997037575,
+          "dct": 0.066214999940712,
+          "rapsd": 0.1591194000793621
+        },
+        {
+          "decode": 0.0035927999997511506,
+          "fft": 0.4570789001882076,
+          "dct": 0.0674021000158973,
+          "rapsd": 0.15759779996005818
+        }
+      ],
+      "visualization_seconds": 0.010111399984452873,
+      "memory": {
+        "peak_working_set_bytes": 290959360,
+        "working_set_bytes": 165625856
+      },
+      "tile_count": 12,
+      "cancelled": true,
+      "cancel_latency": 0.001902199990581721,
+      "source_preserved": true,
+      "ui_status": "Completed",
+      "ui_max_tick_gap_seconds": 0.052052700018975884
+    }
+  ]
+}

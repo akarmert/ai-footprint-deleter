@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ai-footprint-cleaner"
+version = "0.2.0b1"
+description = "Offline image metadata privacy and provenance inspection desktop app"
+requires-python = ">=3.12,<3.16"
+dependencies = ["Pillow==12.3.0", "PySide6==6.12.0", "c2pa-python==0.38.0", "numpy==2.5.4"]
+
+[project.optional-dependencies]
+dev = ["pytest==9.1.1", "pyinstaller==6.22.3"]
+
+[tool.setuptools.packages.find]
+include = ["app*", "modules*"]
+namespaces = true
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

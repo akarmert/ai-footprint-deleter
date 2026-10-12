@@ -1,0 +1,148 @@
+{
+  "platform": "Windows-11-10.0.26200-SP0",
+  "processor": "Intel64 Family 6 Model 198 Stepping 2, GenuineIntel",
+  "python": "3.13.12",
+  "fixture": "uniform RGBA PNG locally generated; decode workload not representative of all real images",
+  "cases": [
+    {
+      "width": 1920,
+      "height": 1080,
+      "file_bytes": 10671,
+      "scan_seconds": 0.11705539998365566,
+      "clean_verify_seconds": 0.11294970000744797,
+      "independent_rescan_seconds": 0.03325799998128787,
+      "repeat_scan_count": 20,
+      "baseline_memory": {
+        "peak_working_set_bytes": 62242816,
+        "working_set_bytes": 54009856
+      },
+      "after_repeated_memory": {
+        "peak_working_set_bytes": 199610368,
+        "working_set_bytes": 65392640
+      },
+      "final_memory": {
+        "peak_working_set_bytes": 282898432,
+        "working_set_bytes": 162344960
+      },
+      "ui_scan_seconds": 0.07254079999984242,
+      "ui_timer_ticks": 3,
+      "ui_max_tick_gap_seconds": 0.03351430001202971,
+      "checks": {
+        "metadata": "Verified",
+        "resolution": "Verified",
+        "mode_alpha": "Verified",
+        "pixels": "Verified",
+        "payload": "Verified",
+        "c2pa": "Verified",
+        "watermark": "Not Supported",
+        "icc": "Verified",
+        "orientation": "Verified"
+      }
+    },
+    {
+      "width": 3840,
+      "height": 2160,
+      "file_bytes": 37514,
+      "scan_seconds": 0.13605319999624044,
+      "clean_verify_seconds": 0.1941936000075657,
+      "independent_rescan_seconds": 0.060442900023190305,
+      "repeat_scan_count": 20,
+      "baseline_memory": {
+        "peak_working_set_bytes": 86994944,
+        "working_set_bytes": 53325824
+      },
+      "after_repeated_memory": {
+        "peak_working_set_bytes": 199737344,
+        "working_set_bytes": 65515520
+      },
+      "final_memory": {
+        "peak_working_set_bytes": 287973376,
+        "working_set_bytes": 160710656
+      },
+      "ui_scan_seconds": 0.11951399999088608,
+      "ui_timer_ticks": 10,
+      "ui_max_tick_gap_seconds": 0.032812499994179234,
+      "checks": {
+        "metadata": "Verified",
+        "resolution": "Verified",
+        "mode_alpha": "Verified",
+        "pixels": "Verified",
+        "payload": "Verified",
+        "c2pa": "Verified",
+        "watermark": "Not Supported",
+        "icc": "Verified",
+        "orientation": "Verified"
+      }
+    },
+    {
+      "width": 7680,
+      "height": 4320,
+      "file_bytes": 138672,
+      "scan_seconds": 0.21998460000031628,
+      "clean_verify_seconds": 0.4905344999860972,
+      "independent_rescan_seconds": 0.14906149997841567,
+      "repeat_scan_count": 20,
+      "baseline_memory": {
+        "peak_working_set_bytes": 187125760,
+        "working_set_bytes": 53788672
+      },
+      "after_repeated_memory": {
+        "peak_working_set_bytes": 333246464,
+        "working_set_bytes": 65327104
+      },
+      "final_memory": {
+        "peak_working_set_bytes": 648695808,
+        "working_set_bytes": 160686080
+      },
+      "ui_scan_seconds": 0.5183782000094652,
+      "ui_timer_ticks": 28,
+      "ui_max_tick_gap_seconds": 0.04757330002030358,
+      "checks": {
+        "metadata": "Verified",
+        "resolution": "Verified",
+        "mode_alpha": "Verified",
+        "pixels": "Verified",
+        "payload": "Verified",
+        "c2pa": "Verified",
+        "watermark": "Not Supported",
+        "icc": "Verified",
+        "orientation": "Verified"
+      }
+    },
+    {
+      "width": 8000,
+      "height": 4999,
+      "file_bytes": 165461,
+      "scan_seconds": 0.29369319998659194,
+      "clean_verify_seconds": 0.7014820999756921,
+      "independent_rescan_seconds": 0.18671439998433925,
+      "repeat_scan_count": 20,
+      "baseline_memory": {
+        "peak_working_set_bytes": 214147072,
+        "working_set_bytes": 53616640
+      },
+      "after_repeated_memory": {
+        "peak_working_set_bytes": 387182592,
+        "working_set_bytes": 65048576
+      },
+      "final_memory": {
+        "peak_working_set_bytes": 795926528,
+        "working_set_bytes": 162119680
+      },
+      "ui_scan_seconds": 0.4590643999981694,
+      "ui_timer_ticks": 30,
+      "ui_max_tick_gap_seconds": 0.03841039998224005,
+      "checks": {
+        "metadata": "Verified",
+        "resolution": "Verified",
+        "mode_alpha": "Verified",
+        "pixels": "Verified",
+        "payload": "Verified",
+        "c2pa": "Verified",
+        "watermark": "Not Supported",
+        "icc": "Verified",
+        "orientation": "Verified"
+      }
+    }
+  ]
+}
