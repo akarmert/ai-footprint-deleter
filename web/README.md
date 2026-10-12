@@ -1,6 +1,6 @@
 # Tarayıcı tabanlı web temeli
 
-Bu dizin Windows masaüstü uygulamasından bağımsız React/Vite web temelidir. Node sunucusu yalnızca derlenmiş `dist` dosyalarını sunar; Python, ExifTool, kullanıcı dosyası depolama veya yükleme API'si çalıştırmaz. Bu temel henüz metadata temizleme yapmaz; analiz/önizleme bir temizleme sonucu değildir. Temizlenmiş gibi gösterilen sahte çıktı üretilmemelidir.
+Bu dizin Windows masaüstü uygulamasından bağımsız React/Vite web temelidir. Node sunucusu yalnızca derlenmiş `dist` dosyalarını sunar; Python, ExifTool, kullanıcı dosyası depolama veya yükleme API'si çalıştırmaz. Faz 2 motoru JPEG, PNG ve WebP kapsayıcılarını tarar, seçilen desteklenen metadata bloklarını yeniden sıkıştırmadan kaldırır ve çıktıyı yeniden ayrıştırıp doğrular. Video işleme yoktur. Doğrulama başarısızsa indirme sunulmaz.
 
 ## Yerel çalışma ve kontroller
 
@@ -46,13 +46,13 @@ docker run --rm -p 3000:3000 ai-footprint-web
 
 ## Yerel işleme sınırları ve sonraki aşama
 
-Video üst sınırı ondalık **1 GB = 1.000.000.000 bayt**, görüntü üst sınırı **128 MiB = 134.217.728 bayt** olarak uygulanmalıdır; bunlar sunucu upload limitleri değil tarayıcı kabul sınırlarıdır. Sınırlar mobil/bellek performansı garantisi değildir.
+Faz 1 video ön kontrol yardımcısı ondalık **1 GB = 1.000.000.000 bayt** sınırını korur; Faz 2 UI video kabul etmez. Görsel üst sınırı **128 MiB = 134.217.728 bayt**, boyut sınırı **40 megapiksel**, tek parça **64 MiB**, toplam metadata **16 MiB**, parça sayısı **4096**, kayıt önizlemesi **512 karakter**. Bunlar sunucu upload limitleri değil yerel güvenlik sınırlarıdır. Sınırlar mobil/bellek performansı garantisi değildir.
 
-Worker tarafında `Blob.slice()` ile en fazla 64 KiB başlık okunur. `src/media.ts` ayrıca sıralı, geri basınçla tüketilebilen parçalı okuma iteratorü sağlar; tüm videoyu `arrayBuffer()` ile belleğe almak uygun değildir. Kontrol yalnız imza/başlık ön kontrolüdür; tam kapsayıcı doğrulaması değildir. MP4 için tanınan başlangıç `ftyp` major brand gerekir; MOV için `qt  ` major brand gerekir. Başlangıç `ftyp` içermeyen eski MOV ve listede olmayan MP4 markaları bu fazda reddedilir. MIME bilgisine güvenilmez. `src/output.ts` kullanıcı etkileşimiyle alınan File System Access handle üzerine parçaları sıralı yazma, close ve hata halinde abort sözleşmesini içerir; UI bu hazırlık kodunu çağırmaz. İleride File System Access API destekleyen tarayıcılarda akışlı çıktı planlanır; bugün temizleme veya akışlı çıktı desteği varmış gibi sunulmaz. Desteklenmeyen tarayıcılar için bellek/boyut sınırları ve güvenli reddetme davranışı ayrıca tasarlanmalıdır.
+Faz 1'deki sınırlı başlık okuma yardımcıları `src/media.ts` içinde korunur; Faz 2 görsel motoru yalnız <=128 MiB görsel için Worker içinde tam dosyayı okur. Orijinal, çıktı ve hash scratch/Blob kopyaları nedeniyle toplam bellek dosya boyutunun birkaç katına çıkabilir; mobil bellek garantisi yoktur. Görsel piksel decode veya canvas yeniden kodlaması yapılmaz. İptal/kaynak değişimi Worker'ı sonlandırır; eski yanıtlar kimlik kontrolüyle yok sayılır ve indirme URL'leri bırakılır. Worker 120 saniyede sonuçlanmazsa iptal edilir. Video daha okuma başlamadan reddedilir. `src/media.ts` ayrıca sıralı, geri basınçla tüketilebilen parçalı okuma iteratorü sağlar; tüm videoyu `arrayBuffer()` ile belleğe almak uygun değildir. Eski `inspect()` yardımcısı yalnız başlık ön kontrolüdür; Faz 2 UI bunun yerine tam görsel kapsayıcı motorunu çağırır. MIME bilgisine güvenilmez; uzantı ve gerçek görsel formatı eşleşmelidir. MP4/MOV yardımcıları gelecekteki faz için korunur, UI'da video etkin değildir. `src/output.ts` kullanıcı etkileşimiyle alınan File System Access handle üzerine parçaları sıralı yazma, close ve hata halinde abort sözleşmesini içerir; UI bu hazırlık kodunu çağırmaz. İleride File System Access API destekleyen tarayıcılarda akışlı çıktı planlanır; bugün video temizleme veya akışlı video çıktı desteği varmış gibi sunulmaz; Faz 2 görsel çıktısı doğrulanmış Blob ile indirilir. Desteklenmeyen tarayıcılar için bellek/boyut sınırları ve güvenli reddetme davranışı ayrıca tasarlanmalıdır.
 
 ## Masaüstü kurallarının yeniden kullanımı
 
-`../modules/metadata/containers.py` davranış referansıdır; bu Python dosyası web sunucusunda çalıştırılmaz. Gelecek TypeScript portu PNG CRC/chunk sırası ve animasyon reddini, JPEG marker/frame/scan ve sondaki ek veri kontrollerini, WebP RIFF uzunluğu/padding/VP8X bayrakları ve animasyon reddini korumalıdır. `classify`, `inventory`, `payload_hashes`, `strip` kuralları; ICC/APP1/APP2/APP11 koruması, yalnızca seçili metadata kaldırımı, WebP bayrak düzeltmesi ve sıkıştırılmış görüntü yükünün hash eşitliğiyle doğrulanması dahil aktarılmalıdır. Bilinmeyen kapsayıcılar sessizce yeniden yazılmamalıdır.
+`../modules/metadata/containers.py` davranış referansıdır; bu Python dosyası web sunucusunda çalıştırılmaz. `src/engine.ts` PNG CRC/chunk sırası ve animasyon reddini, JPEG marker/frame/scan ve sondaki ek veri kontrollerini, WebP RIFF uzunluğu/padding/VP8X bayrakları ve animasyon reddini uygular. `classify`, `inventory`, `payload_hashes`, `strip` kuralları; ICC/APP1/APP2/APP11 koruması, yalnızca seçili metadata kaldırımı, WebP bayrak düzeltmesi ve sıkıştırılmış görüntü yükünün hash eşitliğiyle doğrulanması dahil aktarılmalıdır. Bilinmeyen kapsayıcılar sessizce yeniden yazılmamalıdır.
 
 Referans regresyonlar `../tests/unit/test_hardening.py`, `../tests/unit/test_workflow.py` ve `../tests/unit/test_review_regressions.py` içindedir. Proje kökünde Windows kontrolleri:
 
@@ -61,7 +61,29 @@ Referans regresyonlar `../tests/unit/test_hardening.py`, `../tests/unit/test_wor
 .\.venv\Scripts\python.exe -m pip check
 ```
 
-## Faz 1 doğrulama — 12 Ekim 2026
+## Faz 2 kullanım ve güvenlik politikası
+
+1. Tek JPEG/PNG/WebP seçin; dosya adı ve metadata yalnız yerel UI'da gösterilir. `Yerel metadata ayrıntısı` düz metindir; XML/HTML yürütülmez.
+2. Liste kapsayıcı/blok bazlıdır; EXIF/XMP alt alanları bağımsız düzenlenmez. Mevcut Software/CreatorTool/model/prompt/seed değerleri yalnız mevcut kayıt metninden gösterilir; AI model/üretim tahmini yapılmaz.
+3. Temizlenebilir blokları seçin. ICC daima korunur. İlk motor sürümü EXIF/XMP/IPTC/metin bloklarının telif/üretici bilgileri içerebileceğini varsayar; güvenli kaldırılabilir blokların tamamı hak onayı verilene kadar korunur. Bu, blokta telif kaydı bulunduğunun kesin tespiti değildir. Orientation belirsiz veya 1 dışında ise ilgili yön bilgisini taşıyan blok korunur. Bilinmeyen veya güvenli ayrıştırılamayan kayıtlar korunur.
+4. Telif/hak yönetimi kayıtları varsayılan korunur. `Telif/hak kayıtlarını kaldırmaya yetkiliyim` onayı yalnız motorun uygun bulduğu hak bloklarının seçimine izin verir; C2PA veya desteklenmeyen bloklara yetki vermez. Bu onay hukuki uygunluk garantisi değildir.
+5. C2PA/JUMBF veya opak kaynak kaydı saptanan dosyada tüm temizleme engellenir. Sıkıştırılmış PNG metni, >1MiB metin/gömülü raw profil, bilinmeyen APP1 ve güvenle çözülemeyen XMP kodlaması/DTD/entity içerikleri de kaynak belirsizliği nedeniyle tüm temizlemeyi engeller. UTF-16/32 XMP ve UTF-8 dışı/bozuk kodlamalar desteklenmez; literal Orientation içeren XMP korunur. C2PA kayıt varlığı ile kriptografik doğrulama farklıdır: SDK/imza/zincir doğrulaması ve C2PA kaldırma yoktur. Bilinmeyen/uzak/alışılmadık kayıtların yokluğu garanti edilmez.
+6. `Seçilenleri temizle` sonrası çıktı yeniden ayrıştırılır; seçili blokların kaldırılması, kalan bloklar, format/çözünürlük/alpha/orientation ve görüntü payload eşitliği doğrulanır. Payload SHA-256 gösterilir. Codec bitstream tam decode edilmez; sıkıştırılmış payload aynı tutulur.
+7. Yalnız doğrulanmış Blob `İndir` ile ayrı adla indirilir. Kaynak değiştirilmez, otomatik kaydetme yoktur. İptal, yeni dosya ve seçim/politika değişimleri eski çıktıyı geçersiz kılar.
+
+## Faz 2 doğrulama — 12 Ekim 2026
+
+- Production TypeScript/Vite build başarılı; yeni medya işleme bağımlılığı eklenmedi. `npm test`: **39 başarılı, 1 Windows symlink izin atlaması**. `npm audit`: bildirilen açık **0**. Senior Review, XMP kodlama/yön ve provenance erken dönüş bulguları düzeltildikten sonra incelenen motor/Worker/UI kaynaklarına onay verdi.
+- Gerçek PIL JPEG/PNG/WebP fixture'ları, progressive JPEG, lossless WebP, palette alpha; orientation 1/6, ICC, EXIF Software/Artist/Model, XMP CreatorTool/prompt/model/seed ve Photoshop IPTC copyright testleri mevcut. Metadata kaynakları gerçek kodlanmış görüntülere enjekte edilir; AI üretimi iddiası içermez.
+- Bozuk CRC/sıra/RIFF/bayrak/padding, animasyon, eksik/ek veri, TIFF döngüsü, duplicate EXIF, bilinmeyen/oversized metadata ve kayıt/önizleme sınırları test edilir. Kalan bloklar/payload byte eşitliği ve SHA-256 doğrulanır.
+- Production Chromium'da üç formatın seçimi, onay, temizlik, download çalıştı. JPEG/PNG/WebP sırasıyla 1/3/1 blok kaldırıldı, ICC korundu. İndirilen dosyalar bağımsız PIL decode ile karşılaştırıldı: pikseller, boyut, ICC ve orientation eşit.
+- Ağ kaydı üç aynı-origin Worker JavaScript GET isteği dışında medya isteği içermedi; request body boş, localStorage/sessionStorage/IndexedDB sayıları 0.
+- `tests/browser-acceptance.js`, browser_run_code aracıyla çalıştırılan yeniden üretilebilir Playwright fonksiyonudur (fixture yolu checkout'a göre düzenlenir). Ek paket gerekmez; `npm test` bu browser fonksiyonunu çalıştırmaz. Gerçek Worker yanıtı geciktirilerek scan/clean iptali ve kaynak değişimi; onay geri çekilince çıktı iptali; kontrollü timeout/onerror/onmessageerror testleri geçti. İkinci temizlemede kontrollü hata sonrası eski indirme sunulmadığı ayrıca tarayıcıda kontrol edildi. Gerçek emitted Worker scriptinde SHA-256 reddi enjekte edildi: hata mesajı gösterildi, hiçbir doğrulanmış sonuç veya indirilebilir Blob UI'ya ulaşmadı.
+- 1320×900 / 390×844 metadata ayrıntı görselleri incelendi; yatay taşma yok. Üç formatta orientation6 EXIF seçimi kapalı; sahte PNG ret ve indirme engeli doğrulandı.
+- Windows regresyonları 322 başarılı. Python/PySide6 kaynakları değiştirilmedi. Editörün fixture scriptinde PIL import uyarısı ayrı interpreter seçimine bağlıdır; proje `.venv` ortamındaki PIL fixture üretimi ve bağımsız decode başarılıdır.
+- Symlink testi Windows izinleri nedeniyle atlanır. Gerçek 128MiB bellek/stres profili, native OS seçici diyaloğu, tüm tarayıcılar ve gerçek C2PA sertifika zinciri doğrulaması denenmedi. Docker CLI yok; Docker build/run ve gerçek Railway deploy yapılmadı.
+
+## Faz 1 doğrulama — 12 Ekim 2026 (önceki sürüm)
 
 - `npm run build`: TypeScript ve production Vite build başarılı.
 - `npm test`: 12 başarılı, 1 atlandı. Symlink güvenlik testi Windows symlink oluşturma izni olmadığından atlandı; Linux üzerinde yeniden çalıştırılmalı.
