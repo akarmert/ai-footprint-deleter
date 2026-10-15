@@ -5,7 +5,7 @@ async (page) => {
   const root = 'C:/_projectsmert/ai-footprint-deleter/web/tests/fixtures';
   const assert = (condition, message) => { if (!condition) throw new Error(message); };
   await page.goto('http://localhost:3000');
-  assert(await page.getByRole('button', { name: 'Kapsamlı Temizlik', exact: true }).isDisabled(), 'Unsupported comprehensive mode enabled');
+  assert(await page.getByRole('button', { name: 'Güvenli Mod (Önerilen)', exact: true }).getAttribute('aria-pressed') === 'true', 'Safe mode not default');
   assert(await page.locator('.mode.active').innerText().then(text => text.includes('ICC')), 'Safe ICC policy missing');
   const requests = [];
   const listener = request => requests.push({ url: request.url(), method: request.method(), body: request.postData() });
@@ -28,6 +28,19 @@ async (page) => {
     await page.getByRole('button', { name: 'Seçimi kaldır', exact: true }).click();
     assert(await page.getByRole('button', { name: 'Temizlenmiş Dosyayı İndir', exact: true }).count() === 0, 'Cleared source retained output');
   }
+  await page.getByRole('button', { name: 'Kapsamlı Temizlik', exact: true }).click();
+  await page.getByText(/ICC kaldırılırsa renk yönetimi/).waitFor();
+  for (const ext of ['jpg', 'png', 'webp']) {
+    await page.locator('#media').setInputFiles(`${root}/image-1.${ext}`);
+    await page.getByText('Metadata taraması tamamlandı', { exact: true }).waitFor();
+    await page.getByRole('button', { name: "Metadata'yı Temizle", exact: true }).click();
+    await page.getByRole('button', { name: 'Yetkim var, temizle', exact: true }).click();
+    await page.getByText('Temizlendi · Çıktı doğrulandı', { exact: true }).waitFor();
+    const result = await page.locator('.verification').innerText();
+    assert(result.includes(ext === 'png' ? '1 teknik kayıt korundu' : '0 teknik kayıt korundu'), 'Comprehensive retained count incorrect');
+  }
+  await page.getByRole('button', { name: 'Güvenli Mod (Önerilen)', exact: true }).click();
+  assert(await page.locator('.verification').count() === 0, 'Mode change retained stale output');
   page.off('request', listener);
   assert(requests.every(r => r.method === 'GET' && r.body === null && /\/assets\/inspect.worker-[\w-]+\.js$/.test(r.url)), 'Unexpected media/network request');
   const storage = await page.evaluate(async () => ({ local: localStorage.length, session: sessionStorage.length, databases: (await indexedDB.databases()).length }));
@@ -108,7 +121,7 @@ async (page) => {
     const input = document.querySelector('#media'); input.files = data.files; input.dispatchEvent(new Event('change', { bubbles: true }));
   });
   await page.getByText('Metadata taraması tamamlandı', { exact: true }).waitFor();
-  await page.getByText(/temizlenecek kayıt yok/).waitFor();
+  await page.getByText(/Kaldırılabilecek metadata bulunamadı|temizlenecek kayıt yok/).waitFor();
   assert(await page.getByRole('button', { name: "Metadata'yı Temizle", exact: true }).isDisabled(), 'Empty cleanup enabled');
   assert(await page.locator('.verification').count() === 0, 'Empty source falsely verified');
   return { results, requests, storage, provenance: 'blocked', empty: 'explained', lifecycle: 'cancel/replace/consent/timeout/error/messageerror and actual worker hash-failure passed' };

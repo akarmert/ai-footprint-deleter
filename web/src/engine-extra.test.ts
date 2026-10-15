@@ -1,7 +1,23 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { stripTypeScriptTypes } from 'node:module';
+import { runInNewContext } from 'node:vm';
 import { scanImage, cleanImage } from './engine.ts';
+test('image Worker requires explicit valid mode and returns verified mode', async () => {
+  const source = readFileSync(new URL('./inspect.worker.ts', import.meta.url), 'utf8');
+  const messages: any[] = [];
+  const self: any = { postMessage: (value: any) => messages.push(value) };
+  runInNewContext(stripTypeScriptTypes(source.replace(/^import .*;\r?\n/gm, '')), { self, Uint8Array, Blob, IMAGE_LIMIT: 128 * 1024 * 1024, validateSelection: () => 'JPEG', scanImage, cleanImage });
+  const data = new Uint8Array(readFileSync(new URL('../tests/fixtures/image-1.jpg', import.meta.url)));
+  await self.onmessage({ data: { type: 'scan', file: { size: data.length, arrayBuffer: async () => data.buffer } } });
+  for (const mode of [undefined, 'invalid', null]) {
+    await self.onmessage({ data: { type: 'clean', ids: [], rightsConsent: true, mode } });
+    assert.equal(messages.at(-1).type, 'error');
+  }
+  await self.onmessage({ data: { type: 'clean', ids: [], rightsConsent: true, mode: 'comprehensive' } });
+  assert.equal(messages.at(-1).output.mode, 'comprehensive');
+});
 const encode = (text: string) => new TextEncoder().encode(text);
 const source = () => new Uint8Array(readFileSync(new URL('../tests/fixtures/progressive.jpg', import.meta.url)));
 const join = (...parts: Uint8Array[]) => { const out=new Uint8Array(parts.reduce((n,p)=>n+p.length,0));let pos=0;for(const p of parts){out.set(p,pos);pos+=p.length}return out; };

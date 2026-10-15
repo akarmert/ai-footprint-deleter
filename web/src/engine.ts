@@ -1,4 +1,5 @@
-export type MetadataRecord = { id: string; kind: string; bytes: number; preview: string; status: 'cleanable' | 'protected' | 'unsupported'; reason: string; requiresRightsConsent: boolean }
+export type CleaningMode = 'safe' | 'comprehensive'
+export type MetadataRecord = { id: string; kind: string; bytes: number; preview: string; status: 'cleanable' | 'protected' | 'unsupported'; reason: string; requiresRightsConsent: boolean; comprehensiveOnly?: boolean }
 export type Scan = { format: 'JPEG' | 'PNG' | 'WebP'; width: number; height: number; alpha: boolean; orientation: number | null; records: MetadataRecord[]; c2pa: string; cleaningBlocked: boolean; notes: string[] }
 type Part = { start: number; end: number; payload: Uint8Array; kind: string; record?: MetadataRecord; image: boolean }
 type Parsed = { scan: Scan; parts: Part[]; header: number }
@@ -83,6 +84,21 @@ function exif(data: Uint8Array): { orientation: number | null; value: string } {
     return { orientation, value: values.join('; ').slice(0, PREVIEW) }
   } catch { return { orientation: null, value: 'EXIF TIFF ayrıştırılamadı veya güvenli sınırı aştı' } }
 }
+function validICC(data: Uint8Array): boolean {
+  if (data.length < 132 || !['mntr', 'scnr'].includes(ascii(data, 12, 16)) || u32(data, 0) !== data.length || ascii(data, 36, 40) !== 'acsp' || ![2, 4].includes(data[8]!) || !['RGB ', 'GRAY'].includes(ascii(data, 16, 20)) || !['XYZ ', 'Lab '].includes(ascii(data, 20, 24))) return false
+  const count = u32(data, 128)
+  if (count > 512 || 132 + count * 12 > data.length) return false
+  for (let i = 0; i < count; i++) {
+    const offset = u32(data, 136 + i * 12), length = u32(data, 140 + i * 12)
+    if (!['desc', 'cprt', 'wtpt', 'bkpt', 'chad', 'rXYZ', 'gXYZ', 'bXYZ', 'rTRC', 'gTRC', 'bTRC', 'kTRC', 'chrm', 'dmnd', 'dmdd', 'lumi', 'meas', 'tech', 'view', 'vued'].includes(ascii(data, 132 + i * 12, 136 + i * 12))) return false
+    if (offset % 4 || offset < 132 + count * 12 || length < 8 || offset + length > data.length) return false
+  }
+  return true
+}
+export function isRemovable(record: MetadataRecord, mode: CleaningMode = 'safe'): boolean {
+  return record.comprehensiveOnly ? mode === 'comprehensive' : record.status === 'cleanable' || record.status === 'protected' && record.requiresRightsConsent
+}
+function validateMode(mode: CleaningMode): void { if (mode !== 'safe' && mode !== 'comprehensive') fail('Geçersiz temizleme modu') }
 function parse(data: Uint8Array): Parsed {
   if (!(data instanceof Uint8Array) || data.length < 12 || data.length > MAX || (typeof SharedArrayBuffer !== 'undefined' && data.buffer instanceof SharedArrayBuffer)) fail('Geçersiz veri veya 128 MiB sınırı')
   const scan: Scan = { format: 'PNG', width: 0, height: 0, alpha: false, orientation: 1, records: [], c2pa: 'not-detected-not-guaranteed', cleaningBlocked: false, notes: ['Yalnız kapsayıcı doğrulanır; kodlanmış pikseller çözülmez.', 'C2PA imzası doğrulanmaz; algılanmaması yokluk garantisi değildir.'] }
@@ -270,6 +286,11 @@ function parse(data: Uint8Array): Parsed {
       } else if (marker === 226) { part.image = false; if (ascii(p, 0, Math.min(11, p.length)) === 'ICC_PROFILE') metadata(part, 'ICC'); else record(part, 'APP2', 'protected', 'Bilinmeyen APP2 korunur') }
       else if (marker === 235) { part.image = false; metadata(part, 'APP11') }
       else if (marker === 237 || marker === 254) { part.image = false; metadata(part, marker === 237 ? 'IPTC' : 'Comment') }
+      else if (marker === 224 && ascii(p, 0, 5) === 'JFIF\0') {
+        const safe = !scanned && components.length === 0 && p.length === 14 && p[5] === 1 && p[6]! <= 2 && p[7]! <= 2 && u16(p, 8) > 0 && u16(p, 10) > 0 && p[12] === 0 && p[13] === 0
+        part.image = false; record(part, 'JFIF', 'protected', safe ? 'Küçük resimsiz JFIF; kapsamlı modda yoğunluk bilgisi kaldırılabilir' : 'Desteklenmeyen JFIF korunur')
+        if (safe) part.record!.comprehensiveOnly = true
+      }
       else if (marker >= 224 && marker <= 239 && ![224, 238].includes(marker)) record(part, `APP${marker - 224}`, 'protected', 'Bilinmeyen APP korunur')
       pos = finish
     }
@@ -328,6 +349,17 @@ function parse(data: Uint8Array): Parsed {
   if (!scan.width || !scan.height || scan.width * scan.height > 40_000_000) fail('Görüntü boyutu/40 megapiksel sınırı')
   const exifs = scan.records.filter(r => r.kind === 'EXIF')
   if (exifs.length > 1) { scan.orientation = null; for (const r of exifs) { r.status = 'protected'; r.requiresRightsConsent = false; r.reason = 'Birden çok EXIF bloğu; yön belirsiz' } }
+  const profiles = parts.filter(p => p.record?.kind === 'ICC')
+  if (scan.format === 'JPEG' && profiles.length) {
+    const first = profiles[0]!.payload, total = first[13]
+    const valid = total === profiles.length && profiles.every((p, i) => p.payload.length > 14 && ascii(p.payload, 0, 12) === 'ICC_PROFILE\0' && p.payload[12] === i + 1 && p.payload[13] === total)
+    const joined = new Uint8Array(profiles.reduce((n, p) => n + Math.max(0, p.payload.length - 14), 0))
+    let offset = 0
+    for (const p of profiles) { joined.set(p.payload.subarray(14), offset); offset += Math.max(0, p.payload.length - 14) }
+    if (valid && validICC(joined)) for (const p of profiles) { p.record!.comprehensiveOnly = true; p.record!.reason = 'Doğrulanmış ICC; yalnız kapsamlı modda kaldırılabilir, renk yönetimi değişebilir' }
+  } else if (scan.format === 'WebP') {
+    for (const p of profiles) if (validICC(p.payload)) { p.record!.comprehensiveOnly = true; p.record!.reason = 'Doğrulanmış ICC; yalnız kapsamlı modda kaldırılabilir, renk yönetimi değişebilir' }
+  }
   return { scan, parts, header: header! }
 }
 export function scanImage(data: Uint8Array): Scan { return parse(data).scan }
@@ -341,21 +373,30 @@ async function payloadHash(parts: Part[]): Promise<string> {
   const hash = await globalThis.crypto.subtle.digest('SHA-256', joined)
   return Array.from(new Uint8Array(hash), v => v.toString(16).padStart(2, '0')).join('')
 }
-type CleanResult = { data: Uint8Array; scan: Scan; removed: number; retained: number; payloadHash: string; checks: string[] }
-function selection(before: Parsed, ids: string[], rightsConsent: boolean): Set<string> {
+type CleanResult = { mode: CleaningMode; data: Uint8Array; scan: Scan; removed: number; retained: number; payloadHash: string; checks: string[] }
+function selection(before: Parsed, ids: string[], rightsConsent: boolean, mode: CleaningMode): Set<string> {
+  validateMode(mode)
   if (before.scan.cleaningBlocked) fail('C2PA / opaque provenance: tüm temizlik engellendi')
   if (!Array.isArray(ids) || ids.length > MAX_PARTS || ids.some(id => typeof id !== 'string') || new Set(ids).size !== ids.length || typeof rightsConsent !== 'boolean') fail('Geçersiz veya yinelenen seçim')
   const selected = new Set(ids)
   for (const id of selected) {
     const record = before.scan.records.find(r => r.id === id)
-    if (!record || !(record.status === 'cleanable' || (record.status === 'protected' && record.requiresRightsConsent))) fail('Bilinmeyen veya korunan seçim')
-    if (record!.requiresRightsConsent && !rightsConsent) fail('Hak bilgisi kaldırma onayı gerekli')
+    if (!record || !isRemovable(record, mode)) fail('Bilinmeyen veya korunan seçim')
+    if ((record!.requiresRightsConsent || record!.kind === 'ICC') && !rightsConsent) fail('Hak bilgisi kaldırma onayı gerekli')
+  }
+  if (before.scan.format === 'JPEG') {
+    const profiles = before.scan.records.filter(r => r.kind === 'ICC')
+    if (profiles.some(r => selected.has(r.id)) && profiles.some(r => !selected.has(r.id))) fail('ICC segmentleri birlikte kaldırılmalı')
+    if (before.parts.some(p => p.record?.kind === 'JFIF' && selected.has(p.record.id))) {
+      const frame = before.parts.find(p => ['JPEG-c0', 'JPEG-c1', 'JPEG-c2'].includes(p.kind))
+      if (!frame || ![1, 3].includes(frame.payload[5]!) || (frame.payload[5] === 3 && ![1, 2, 3].every((v, i) => frame.payload[6 + i * 3] === v)) || before.parts.some(p => p.kind === 'JPEG-ee' || p.record?.kind === 'JFIF' && !selected.has(p.record.id))) fail('JFIF renk yorumlama güvenliği doğrulanamadı')
+    }
   }
   return selected
 }
-export async function cleanImage(data: Uint8Array, ids: string[], rightsConsent: boolean): Promise<CleanResult> {
+export async function cleanImage(data: Uint8Array, ids: string[], rightsConsent: boolean, mode: CleaningMode = 'safe'): Promise<CleanResult> {
   const before = parse(data)
-  const selected = selection(before, ids, rightsConsent)
+  const selected = selection(before, ids, rightsConsent, mode)
   const retained = before.parts.filter(p => !p.record || !selected.has(p.record.id))
   const length = before.header + retained.reduce((n, p) => n + p.end - p.start, 0)
   if (length > MAX) fail('Çıktı sınırı')
@@ -366,17 +407,18 @@ export async function cleanImage(data: Uint8Array, ids: string[], rightsConsent:
   for (const part of retained) {
     output.set(data.subarray(part.start, part.end), pos)
     if (before.scan.format === 'WebP' && part.kind === 'VP8X') {
+      if (removedKinds.has('ICCP')) output[pos + 8]! &= ~32
       if (removedKinds.has('EXIF')) output[pos + 8]! &= ~8
       if (removedKinds.has('XMP ')) output[pos + 8]! &= ~4
     }
     pos += part.end - part.start
   }
   if (before.scan.format === 'WebP') new DataView(output.buffer).setUint32(4, output.length - 8, true)
-  return verifyOutput(data, output, ids, rightsConsent)
+  return verifyOutput(data, output, ids, rightsConsent, mode)
 }
-export async function verifyOutput(data: Uint8Array, output: Uint8Array, ids: string[], rightsConsent: boolean): Promise<CleanResult> {
+export async function verifyOutput(data: Uint8Array, output: Uint8Array, ids: string[], rightsConsent: boolean, mode: CleaningMode = 'safe'): Promise<CleanResult> {
   const before = parse(data)
-  const selected = selection(before, ids, rightsConsent)
+  const selected = selection(before, ids, rightsConsent, mode)
   const retained = before.parts.filter(p => !p.record || !selected.has(p.record.id))
   const removedKinds = new Set(before.parts.filter(p => p.record && selected.has(p.record.id)).map(p => p.kind))
   const after = parse(output)
@@ -389,7 +431,7 @@ export async function verifyOutput(data: Uint8Array, output: Uint8Array, ids: st
     if (expected.length !== raw.length || part.kind !== actual.kind) fail('Tutulan blok sırası değişti')
     for (let j = 0; j < raw.length; j++) {
       let value = expected[j]!
-      if (part.kind === 'VP8X' && j === 8) { if (removedKinds.has('EXIF')) value &= ~8; if (removedKinds.has('XMP ')) value &= ~4 }
+      if (part.kind === 'VP8X' && j === 8) { if (removedKinds.has('ICCP')) value &= ~32; if (removedKinds.has('EXIF')) value &= ~8; if (removedKinds.has('XMP ')) value &= ~4 }
       if (raw[j] !== value) fail('Tutulan blok baytları değişti')
     }
   })
@@ -398,5 +440,5 @@ export async function verifyOutput(data: Uint8Array, output: Uint8Array, ids: st
   const oldImages = before.parts.filter(p => p.image), newImages = after.parts.filter(p => p.image)
   if (oldImages.length !== newImages.length || oldImages.some((p, i) => !equal(p.payload, newImages[i]!.payload))) fail('Kodlanmış görüntü yükü değişti')
   const hash = await payloadHash(after.parts)
-  return { data: output, scan: after.scan, removed: selected.size, retained: after.scan.records.length, payloadHash: hash, checks: ['Exact selected blocks removed', 'All retained block bytes verified (WebP EXIF/XMP flags adjusted only)', 'Encoded payload bytes identical; SHA-256 recorded', 'Format/dimensions/alpha/orientation/ICC preserved', 'Peak owned byte allocations: output <=128 MiB plus SHA-256 scratch <=128 MiB; caller input <=128 MiB'] }
+  return { mode, data: output, scan: after.scan, removed: selected.size, retained: after.scan.records.length, payloadHash: hash, checks: ['Exact selected blocks removed', 'All retained block bytes verified (WebP selected metadata flags adjusted only)', 'Encoded payload bytes identical; SHA-256 recorded', 'Format/dimensions/alpha/orientation preserved', `Cleaning mode verified: ${mode}; ICC removed only by explicit comprehensive selection`, 'Peak owned byte allocations: output <=128 MiB plus SHA-256 scratch <=128 MiB; caller input <=128 MiB'] }
 }

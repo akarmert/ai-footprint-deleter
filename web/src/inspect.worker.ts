@@ -19,11 +19,12 @@ scope.onmessage = async ({ data }) => {
       scope.postMessage({ type: 'scan', scan });
     } else if (data.type === 'clean') {
       if (!source) throw new Error('Önce görseli yeniden tarayın.');
-      const result = await cleanImage(source, data.ids, data.rightsConsent);
+      if (data.mode !== 'safe' && data.mode !== 'comprehensive') throw new Error('Geçersiz temizleme modu.');
+      const result = await cleanImage(source, data.ids, data.rightsConsent, data.mode);
       const mime = { JPEG:'image/jpeg', PNG:'image/png', WebP:'image/webp' }[result.scan.format];
       // Blob owns verified bytes. No full-resolution pixel decode or network operation.
       const blob = new Blob([result.data as Uint8Array<ArrayBuffer>], { type: mime });
-      scope.postMessage({ type: 'clean', output: { blob, scan: result.scan, removed: result.removed, retained: result.retained, payloadHash: result.payloadHash, checks: result.checks } });
+      scope.postMessage({ type: 'clean', output: { mode: result.mode, blob, scan: result.scan, removed: result.removed, retained: result.retained, payloadHash: result.payloadHash, checks: result.checks } });
     } else throw new Error('Geçersiz işlem.');
   } catch (error) {
     if (data.type === 'scan') source = undefined;

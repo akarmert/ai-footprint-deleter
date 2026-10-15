@@ -1,6 +1,7 @@
 import { StrictMode, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { validateSelection } from './media';
+import { isRemovable, type CleaningMode } from './engine';
 import type { MediaScan, Response, VerifiedOutput, VideoResponse } from './protocol';
 import { chooseOutput, chooseTemporaryDirectory, supportsDiskOutput } from './output';
 import './style.css';
@@ -11,6 +12,11 @@ function App() {
   const [output, setOutput] = useState<VerifiedOutput>();
   const confirmation = useRef<HTMLDialogElement>(null);
   const [pendingConsent, setPendingConsent] = useState(false);
+  const [mode, setMode] = useState<CleaningMode>('safe');
+  function changeMode(next: CleaningMode) {
+    if (busy || saving || committing || pendingConsent) return;
+    revoke(); setOutput(undefined); setVideoDone(false); setMode(next);
+  }
   const [error, setError] = useState('');
   const [busy, setBusy] = useState<'' | 'scan' | 'clean'>('');
   const [dragging, setDragging] = useState(false);
@@ -125,16 +131,16 @@ function App() {
       expire(active); active.postMessage({ type:'scan', file:source, ...(video ? { format } : {}) });
     } catch (cause) { stop(); setBusy(''); setError(cause instanceof Error ? cause.message : 'Dosya seçilemedi.'); }
   }
-  const eligible = scan?.cleaningBlocked ? [] : scan?.records.filter(record => record.status === 'cleanable' || record.status === 'protected' && record.requiresRightsConsent) ?? [];
+  const eligible = scan?.cleaningBlocked ? [] : scan?.records.filter(record => isRemovable(record, scan.format === 'MP4' || scan.format === 'MOV' ? 'safe' : mode)) ?? [];
   function requestClean() {
     if (!eligible.length || busy || saving || pendingConsent) return;
-    if (eligible.some(record => record.requiresRightsConsent)) {
+    if (eligible.some(record => record.requiresRightsConsent || record.kind === 'ICC')) {
       setPendingConsent(true); confirmation.current?.showModal();
     } else void clean(false);
   }
   async function clean(consent: boolean) {
     if (!worker.current || !scan || !eligible.length || scan.cleaningBlocked || saving || busy) return;
-    if (eligible.some(record => record.requiresRightsConsent) && !consent) return;
+    if (eligible.some(record => record.requiresRightsConsent || record.kind === 'ICC') && !consent) return;
     const selected = eligible.map(record => record.id);
     const active = worker.current, version = generation.current;
     revoke(); setOutput(undefined); setVideoDone(false); setError('');
@@ -148,7 +154,7 @@ function App() {
         active.postMessage({ type: 'clean', ids: selected, rightsConsent: consent, handle, temporaryDirectory });
       } else {
         setBusy('clean'); expire(active);
-        active.postMessage({ type:'clean', ids:selected, rightsConsent:consent });
+        active.postMessage({ type:'clean', ids:selected, rightsConsent:consent, mode });
       }
     } catch (cause) {
       if (generation.current === version) { setBusy(''); setError(cause instanceof Error ? cause.message : 'Çıktı seçilemedi.'); }
@@ -166,13 +172,14 @@ function App() {
   return <div className="shell">
     <dialog ref={confirmation} aria-labelledby="consent-title" onCancel={() => setPendingConsent(false)} onClose={() => setPendingConsent(false)}>
       <h2 id="consent-title">Hak ve telif bilgileri için onay</h2>
-      <p>Temizlenebilir bloklar hak/telif bilgileri içerebilir. Bu kayıtları kaldırmaya yetkili olduğunuzu onaylıyor musunuz? Uygun blokların tüm alt alanları kaldırılır; ICC, görüntü yönü ve C2PA korumaları değişmez.</p>
+      <p>Temizlenebilir bloklar hak/telif bilgileri içerebilir. Bu kayıtları kaldırmaya yetkili olduğunuzu onaylıyor musunuz? Uygun blokların tüm alt alanları kaldırılır; Görüntü yönü ve C2PA korumaları değişmez. {mode === 'comprehensive' ? 'Kapsamlı mod desteklenen ICC profilini kaldırabilir; renk yönetimi ve görünüm değişebilir.' : 'ICC renk profili korunur.'}</p>
       <div className="dialog-actions"><button onClick={() => { confirmation.current?.close(); setPendingConsent(false); }}>Vazgeç</button><button className="primary" onClick={() => { confirmation.current?.close(); setPendingConsent(false); void clean(true); }}>Yetkim var, temizle</button></div>
     </dialog>
     <header><a className="brand" href="/" aria-label="AI Footprint Cleaner ana sayfa"><span className="brand-mark">AF</span><span>AI Footprint <strong>Cleaner</strong><small>Görsel &amp; Video Üstveri Temizleyici</small></span></a><span className="phase">Sıfır Medya Yüklemesi · Tarayıcı İçi İşlem</span></header>
     <main>
       <section className="intro"><p className="eyebrow">DAHA AZ İZ. DAHA FAZLA SADELİK.</p><h1>Sade, Sessiz ve<br /><em>Kusursuz Temizlik</em></h1><p>Gereksiz karmaşıklıktan arındırılmış, hızlı üstveri temizliği.</p></section>
-      <section className="mode-selector" aria-label="Temizleme modu"><div className="mode active"><strong>Güvenli Mod <span>Önerilen</span></strong><p>ICC renk profili ve görüntü yönü korunur.</p></div><div className="mode"><button disabled aria-describedby="comprehensive-note">Kapsamlı Temizlik</button><p id="comprehensive-note">Ek yardımcı veri politikası henüz desteklenmiyor.</p></div></section>
+      <section className="mode-selector" aria-label="Temizleme modu"><div className={`mode ${mode === 'safe' ? 'active' : ''}`}><button aria-pressed={mode === 'safe'} disabled={!!busy || saving || committing || pendingConsent} onClick={() => changeMode('safe')}>Güvenli Mod (Önerilen)</button><p>ICC renk profili ve görüntü yönü korunur.</p></div><div className={`mode ${mode === 'comprehensive' ? 'active' : ''}`}><button aria-pressed={mode === 'comprehensive'} disabled={!!busy || saving || committing || pendingConsent} aria-describedby="comprehensive-note" onClick={() => changeMode('comprehensive')}>Kapsamlı Temizlik</button><p id="comprehensive-note">JPEG: doğrulanmış ICC ve uygun JFIF. WebP: doğrulanmış ICC.</p></div></section>
+      {mode === 'comprehensive' && <p className="warning mode-warning">ICC kaldırılırsa renk yönetimi ve görünüm değişebilir. PNG ICC sıkıştırması bu modda doğrulanmadığı için korunur; video güvenli politikayı kullanır. Tüm AI izleri veya görünmez filigranlar silinmez.</p>}
       <div className="workspace">
         <section className="panel source-panel" aria-labelledby="source-title"><div className="panel-heading"><h2 id="source-title">01 <span>Dosya seçimi</span></h2><span className="chip">Yalnız yerel</span></div>
           <div className={`dropzone ${dragging ? 'dragging' : ''}`} onDragOver={event => { event.preventDefault(); setDragging(true); }} onDragLeave={() => setDragging(false)} onDrop={event => { event.preventDefault(); setDragging(false); select(event.dataTransfer.files); }}>

@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
-import { scanImage, cleanImage, verifyOutput } from './engine.ts'
+import { scanImage, cleanImage, verifyOutput, isRemovable } from './engine.ts'
 const fixture = (name: string): Uint8Array => new Uint8Array(readFileSync(new URL(`../tests/fixtures/${name}`, import.meta.url)))
 const concat = (...parts: Uint8Array[]): Uint8Array => { const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0)); let pos = 0; for (const p of parts) { out.set(p, pos); pos += p.length } return out }
 const bytes = (s: string) => new TextEncoder().encode(s)
@@ -32,6 +32,59 @@ for (const ext of ['jpg', 'png', 'webp']) {
     const result = await cleanImage(data, scan.records.filter(r => r.requiresRightsConsent).map(r => r.id), true); assert.equal(result.scan.orientation, 6)
   })
 }
+for (const ext of ['jpg', 'png', 'webp']) {
+  test(`${ext} explicit comprehensive policy compared with safe on real ICC fixture`, async () => {
+    const data = fixture(`image-1.${ext}`), scan = scanImage(data)
+    const safeIds = scan.records.filter(r => isRemovable(r, 'safe')).map(r => r.id)
+    const allIds = scan.records.filter(r => isRemovable(r, 'comprehensive')).map(r => r.id)
+    const safe = await cleanImage(data, safeIds, true)
+    const full = await cleanImage(data, allIds, true, 'comprehensive')
+    assert.equal(safe.mode, 'safe'); assert.equal(full.mode, 'comprehensive')
+    assert.equal(full.payloadHash, safe.payloadHash)
+    for (const key of ['width', 'height', 'orientation', 'alpha'] as const) assert.equal(full.scan[key], scan[key])
+    assert.equal(full.removed, allIds.length); assert.equal(full.retained, scan.records.length - allIds.length)
+    assert.ok(safe.scan.records.some(r => r.kind === 'ICC'))
+    assert.equal(full.scan.records.some(r => r.kind === 'ICC'), ext === 'png')
+    if (ext !== 'png') {
+      await assert.rejects(verifyOutput(data, full.data, allIds, true, 'safe'))
+      await assert.rejects(cleanImage(data, scan.records.filter(r => r.kind === 'ICC').map(r => r.id), false, 'comprehensive'), /onay/)
+    }
+    assert.equal((await verifyOutput(data, full.data, allIds, true, 'comprehensive')).removed, allIds.length)
+    const again = await cleanImage(full.data, [], false, 'comprehensive'); assert.deepEqual(again.data, full.data)
+    await assert.rejects(cleanImage(data, [], true, 'invalid' as never), /modu/)
+    await assert.rejects(cleanImage(data.subarray(0, 30), [], true, 'comprehensive'))
+  })
+}
+test('ICC-free genuine images and tampered comprehensive output remain guarded', async () => {
+  for (const name of ['progressive.jpg', 'palette.png', 'lossless.webp']) {
+    const data = fixture(name), scan = scanImage(data)
+    const result = await cleanImage(data, scan.records.filter(r => isRemovable(r, 'comprehensive')).map(r => r.id), true, 'comprehensive')
+    assert.equal(result.scan.width, scan.width); assert.equal(result.scan.alpha, scan.alpha)
+  }
+  const data = fixture('image-1.webp'), ids = scanImage(data).records.filter(r => isRemovable(r, 'comprehensive')).map(r => r.id)
+  const result = await cleanImage(data, ids, true, 'comprehensive'), bad = result.data.slice()
+  bad[20]! |= 32
+  await assert.rejects(verifyOutput(data, bad, ids, true, 'comprehensive'))
+  const jpeg = fixture('image-1.jpg'), partial = scanImage(jpeg).records.filter(r => r.kind === 'ICC').map(r => r.id)
+  const full = await cleanImage(jpeg, partial, true, 'comprehensive')
+  const corrupt = full.data.slice(); corrupt[corrupt.length - 4]! ^= 1
+  await assert.rejects(verifyOutput(jpeg, corrupt, partial, true, 'comprehensive'))
+})
+test('comprehensive rejects provenance in every format', async () => {
+  for (const data of [jpgInsert(fixture('image-1.jpg'), 235, bytes('c2pa')), pngInsert(fixture('image-1.png'), 'caBX', bytes('manifest')), webpInsert(fixture('image-1.webp'), 'C2PA', bytes('manifest'))]) {
+    await assert.rejects(cleanImage(data, scanImage(data).records.map(r => r.id), true, 'comprehensive'), /provenance/)
+  }
+})
+test('comprehensive preserves orientation and rejects malformed JPEG ICC and unsafe JFIF', async () => {
+  const oriented = fixture('image-6.jpg'), scan = scanImage(oriented)
+  const full = await cleanImage(oriented, scan.records.filter(r => isRemovable(r, 'comprehensive')).map(r => r.id), true, 'comprehensive')
+  assert.equal(full.scan.orientation, 6)
+  const bad = jpgInsert(fixture('progressive.jpg'), 226, bytes('ICC_PROFILE\0\x01\x01broken'))
+  const icc = scanImage(bad).records.find(r => r.kind === 'ICC')!
+  assert.equal(icc.comprehensiveOnly, undefined); await assert.rejects(cleanImage(bad, [icc.id], true, 'comprehensive'))
+  const jfif = jpgInsert(fixture('progressive.jpg'), 224, bytes('JFIF\0broken'))
+  for (const r of scanImage(jfif).records.filter(r => r.kind === 'JFIF' && !r.comprehensiveOnly)) await assert.rejects(cleanImage(jfif, [r.id], true, 'comprehensive'))
+})
 test('progressive JPEG, lossless WebP and palette transparency', () => { assert.equal(scanImage(fixture('progressive.jpg')).width, 24); assert.equal(scanImage(fixture('lossless.webp')).alpha, true); assert.equal(scanImage(fixture('palette.png')).alpha, true) })
 test('caller IDs, duplicate selection, protected ICC, consent type', async () => { const data = fixture('image-1.png'), scan = scanImage(data), id = scan.records.find(r => r.requiresRightsConsent)!.id; for (const ids of [['missing'], [id, id], [scan.records.find(r => r.kind === 'ICC')!.id]]) await assert.rejects(cleanImage(data, ids, true)); await assert.rejects(cleanImage(data, [], 'yes' as unknown as boolean)) })
 test('C2PA and opaque APP11 block ANY cleaning including no-op', async () => {
