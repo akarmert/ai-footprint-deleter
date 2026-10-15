@@ -7,6 +7,32 @@ async (page) => {
   await page.goto('http://localhost:3000');
   assert(await page.getByRole('button', { name: 'Güvenli Mod (Önerilen)', exact: true }).getAttribute('aria-pressed') === 'true', 'Safe mode not default');
   assert(await page.locator('.mode.active').innerText().then(text => text.includes('ICC')), 'Safe ICC policy missing');
+  const cards = page.locator('button.mode');
+  for (const width of [1320, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    for (let i = 0; i < 2; i++) {
+      const card = cards.nth(i), other = cards.nth(1 - i), box = await card.boundingBox();
+      assert(box && box.width >= 44 && box.height >= 44, 'Mode touch target too small');
+      for (const position of [{ x: 2, y: box.height / 2 }, { x: box.width - 2, y: box.height / 2 }, { x: box.width / 2, y: 2 }, { x: box.width / 2, y: box.height - 2 }]) {
+        await other.click(); await card.click({ position });
+        assert(await card.getAttribute('aria-pressed') === 'true', 'Card edge not selectable');
+      }
+      await other.click(); await card.locator('.mode-description').click();
+      assert(await card.getAttribute('aria-pressed') === 'true', 'Card description not selectable');
+    }
+    await cards.nth(0).focus(); await page.keyboard.press('Tab');
+    assert(await cards.nth(1).evaluate(element => element === document.activeElement), 'Mode Tab order incorrect');
+    await page.keyboard.press('Enter');
+    assert(await cards.nth(1).getAttribute('aria-pressed') === 'true', 'Enter mode selection failed');
+    await page.keyboard.press('Shift+Tab'); await page.keyboard.press('Space');
+    assert(await cards.nth(0).getAttribute('aria-pressed') === 'true', 'Space mode selection failed');
+    assert(await cards.nth(0).evaluate(element => getComputedStyle(element).outlineStyle === 'solid'), 'Keyboard focus invisible');
+    await cards.nth(0).hover(); await page.mouse.down();
+    assert(await cards.nth(0).evaluate(element => getComputedStyle(element).boxShadow.includes('inset')), 'Pressed feedback missing');
+    await page.mouse.up();
+    assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'Mode layout overflows');
+  }
+  await page.setViewportSize({ width: 1320, height: 900 });
   const requests = [];
   const listener = request => requests.push({ url: request.url(), method: request.method(), body: request.postData() });
   page.on('request', listener);
