@@ -5,6 +5,8 @@ async (page) => {
   const root = 'C:/_projectsmert/ai-footprint-deleter/web/tests/fixtures';
   const assert = (condition, message) => { if (!condition) throw new Error(message); };
   await page.goto('http://localhost:3000');
+  assert(await page.getByRole('button', { name: 'Kapsamlı Temizlik', exact: true }).isDisabled(), 'Unsupported comprehensive mode enabled');
+  assert(await page.locator('.mode.active').innerText().then(text => text.includes('ICC')), 'Safe ICC policy missing');
   const requests = [];
   const listener = request => requests.push({ url: request.url(), method: request.method(), body: request.postData() });
   page.on('request', listener);
@@ -13,6 +15,7 @@ async (page) => {
     await page.locator('input[type=file]').setInputFiles(`${root}/image-1.${ext}`);
     await page.getByText('Metadata taraması tamamlandı', { exact: true }).waitFor();
     assert(await page.locator('input[type=checkbox]').count() === 0, 'Per-record selection remains');
+    assert(await page.locator('details.metadata').getAttribute('open') === null, 'Technical details open by default');
     await page.getByRole('button', { name: "Metadata'yı Temizle", exact: true }).click();
     await page.getByRole('button', { name: 'Vazgeç', exact: true }).click();
     assert(await page.locator('.verification').count() === 0, 'Rejected consent produced output');

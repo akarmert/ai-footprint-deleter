@@ -98,6 +98,8 @@ Referans regresyonlar `../tests/unit/test_hardening.py`, `../tests/unit/test_wor
 
 ## Faz 2 kullanım ve güvenlik politikası
 
+Arayüz Zen Netliği düzeninde, açık arka plan ve tek sütunlu yerel işlem akışı kullanır. Etkin `Güvenli Mod` mevcut motor politikasını uygular; ICC ve görüntü yönü korunur. Ayrı ek yardımcı veri politikası uygulanmadığı için `Kapsamlı Temizlik` açıklamayla pasiftir. Rozet medya yüklenmediğini belirtir; mutlak güvenlik veya sunucu erişim loglarının yokluğu iddiası taşımaz.
+
 1. Tek JPEG/PNG/WebP veya desteklenen MP4/MOV seçin; tarama otomatik başlar. Dosya adı/boyutu, bulunan, temizlenebilir ve korunan blok sayıları gösterilir. Teknik liste `Detayları göster` altında düz metindir; XML/HTML yürütülmez.
 2. Liste kapsayıcı/blok bazlıdır; EXIF/XMP alt alanları bağımsız düzenlenmez. Mevcut Software/CreatorTool/model/prompt/seed değerleri yalnız mevcut kayıt metninden gösterilir; AI model/üretim tahmini yapılmaz.
 3. `Metadata'yı Temizle` tüm uygun kayıtları otomatik seçer; kayıt başına seçim kutusu yoktur. Sayılar metadata alanları değil bloklardır; hak onayı gerektiren uygun bloklar da temizlenebilir sayısına dahildir. ICC daima korunur. İlk motor sürümü EXIF/XMP/IPTC/metin bloklarının telif/üretici bilgileri içerebileceğini varsayar; güvenli kaldırılabilir blokların tamamı hak onayı verilene kadar korunur. Bu, blokta telif kaydı bulunduğunun kesin tespiti değildir. Orientation belirsiz veya 1 dışında ise ilgili yön bilgisini taşıyan blok korunur. Bilinmeyen veya güvenli ayrıştırılamayan kayıtlar korunur.
