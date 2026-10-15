@@ -5,17 +5,20 @@ import { stripTypeScriptTypes } from 'node:module';
 import { runInNewContext } from 'node:vm';
 
 const source = await readFile(new URL('./video.worker.ts', import.meta.url), 'utf8');
-async function harness(mode: 'ok' | 'verify-fail' | 'write-fail' | 'cancel' | 'close-fail' | 'commit-cancel' | 'cleanup-fail' | 'abort-fail' | 'cleanup-hang') {
+async function harness(mode: 'ok' | 'verify-fail' | 'write-fail' | 'cancel' | 'close-fail' | 'commit-cancel' | 'cleanup-fail' | 'abort-fail' | 'cleanup-hang' | 'quota-low' | 'quota-unknown' | 'stage-quota' | 'external' | 'external-cleanup' | 'collision' | 'same-stage' | 'identity-fail') {
   const calls: string[] = [], messages: any[] = [];
   let resolve!: () => void;
   const done = new Promise<void>(r => { resolve = r; });
   const blob = new Blob([new Uint8Array(8)]);
   const self: any = { postMessage(value: any) { messages.push(value); }, close() { calls.push('worker-close'); } };
   const root = {
-    async getFileHandle() { return { async createWritable() { return {
-      async write() { calls.push('stage-write'); }, async close() { calls.push('stage-close'); }, async abort() { calls.push('stage-abort'); },
+    async getFileHandle(name: string, options?: { create: boolean }) {
+      assert.equal(name, 'afc-video-test.tmp');
+      if (!options?.create && mode !== 'collision') throw Object.assign(new Error('not found'), { name: 'NotFoundError' });
+      return { async isSameEntry() { if (mode === 'identity-fail') throw new Error('identity denied'); return mode === 'same-stage'; }, async createWritable() { return {
+      async write() { calls.push('stage-write'); if (mode === 'stage-quota') throw Object.assign(new Error('quota'), { name: 'QuotaExceededError' }); }, async close() { calls.push('stage-close'); }, async abort() { calls.push('stage-abort'); },
     }; }, async getFile() { return blob; } }; },
-    async removeEntry() { calls.push('remove-stage'); resolve(); if (mode === 'cleanup-hang') return new Promise<void>(() => {}); if (mode === 'cleanup-fail') throw new Error('delete denied'); },
+    async removeEntry(name: string) { assert.equal(name, 'afc-video-test.tmp'); calls.push('remove-stage'); resolve(); if (mode === 'cleanup-hang') return new Promise<void>(() => {}); if (mode === 'cleanup-fail' || mode === 'external-cleanup') throw new Error('delete denied'); },
   };
   const target = { name: 'out.mp4', async createWritable() { calls.push('target-open'); return {
     async write() { calls.push('target-write'); if (mode === 'write-fail' || mode === 'abort-fail') throw new Error('disk full'); if (mode === 'cancel') await self.onmessage({ data: { type: 'cancel' } }); },
@@ -24,23 +27,54 @@ async function harness(mode: 'ok' | 'verify-fail' | 'write-fail' | 'cancel' | 'c
   }; } };
   const code = stripTypeScriptTypes(source.replace(/^import .*;\r?\n/gm, ''));
   runInNewContext(code, {
-    self, setTimeout: (fn: () => void, ms: number) => setTimeout(fn, mode === 'cleanup-hang' ? 1 : ms), clearTimeout, navigator: { storage: { async getDirectory() { return root; } } }, crypto: { randomUUID() { return 'test'; } },
+    self, setTimeout: (fn: () => void, ms: number) => setTimeout(fn, mode === 'cleanup-hang' ? 1 : ms), clearTimeout, navigator: { storage: { async estimate() { calls.push('estimate'); return mode === 'quota-unknown' ? {} : { quota: mode === 'quota-low' ? 4 : 10_000_000, usage: 0 }; }, async getDirectory() { if (mode === 'external' || mode === 'external-cleanup') throw new Error('OPFS must not be opened'); return root; } } }, crypto: { randomUUID() { return 'test'; } },
     scanVideo: async () => ({ format: 'MP4', records: [] }),
     videoChunks: async function* () { yield new Uint8Array(8); },
     verifyVideo: async () => { calls.push('verify'); if (mode === 'verify-fail') throw new Error('verification rejected'); return { format: 'MP4' }; },
   });
-  await self.onmessage({ data: { type: 'scan', file: { name: 'source.mp4' }, format: 'MP4' } });
+  await self.onmessage({ data: { type: 'scan', file: { name: 'source.mp4', size: 8 }, format: 'MP4' } });
   messages.length = 0;
-  await self.onmessage({ data: { type: 'clean', ids: ['one'], rightsConsent: true, handle: target } });
-  await done;
+  await self.onmessage({ data: { type: 'clean', ids: ['one'], rightsConsent: true, handle: target, ...((mode === 'external' || mode === 'external-cleanup') ? { temporaryDirectory: root } : {}) } });
+  if (!['quota-low', 'quota-unknown', 'collision', 'same-stage', 'identity-fail'].includes(mode)) await done;
   return { calls, messages };
 }
 test('video Worker verifies before opening destination and closes before success; removes staging', async () => {
   const { calls, messages } = await harness('ok');
-  assert.deepEqual(calls, ['stage-write', 'stage-close', 'verify', 'target-open', 'target-write', 'target-close', 'remove-stage']);
+  assert.deepEqual(calls, ['estimate', 'stage-write', 'stage-close', 'verify', 'target-open', 'target-write', 'target-close', 'remove-stage']);
   assert.equal(messages.at(-1).type, 'video-done');
   assert.match(source, /staged\.slice\(position, position \+ 1024 \* 1024\)/);
   assert.doesNotMatch(source, /staged\.arrayBuffer\(\)|source\.arrayBuffer\(\)|new Blob/);
+});
+for (const mode of ['quota-low', 'quota-unknown', 'collision', 'same-stage'] as const) test(`video Worker ${mode} rejects without opening destination or deleting unowned files`, async () => {
+  const { calls, messages } = await harness(mode);
+  assert.equal(calls.includes('target-open'), false);
+  assert.equal(calls.includes('stage-write'), false);
+  assert.equal(calls.includes('remove-stage'), false);
+  assert.equal(messages.at(-1).type, 'error');
+});
+test('temporary identity rejection reports unremoved file without touching destination', async () => {
+  const { calls, messages } = await harness('identity-fail');
+  assert.equal(calls.includes('target-open'), false);
+  assert.equal(calls.includes('remove-stage'), false);
+  assert.equal(messages.at(-1).type, 'error');
+  assert.match(messages.at(-1).cleanupWarning, /afc-video-test\.tmp/);
+});
+test('external temporary directory bypasses OPFS and cleans only the owned file', async () => {
+  const { calls, messages } = await harness('external');
+  assert.equal(calls.includes('estimate'), false);
+  assert.equal(calls.at(-1), 'remove-stage');
+  assert.equal(messages.at(-1).type, 'video-done');
+});
+test('external cleanup failure identifies the exact temporary file', async () => {
+  const { messages } = await harness('external-cleanup');
+  assert.equal(messages.at(-1).type, 'video-done');
+  assert.match(messages.at(-1).cleanupWarning, /afc-video-test\.tmp/);
+});
+test('staging quota error aborts, cleans and never opens destination', async () => {
+  const { calls, messages } = await harness('stage-quota');
+  assert.deepEqual(calls, ['estimate', 'stage-write', 'stage-abort', 'remove-stage']);
+  assert.equal(messages.at(-1).type, 'error');
+  assert.match(messages.at(-1).message, /kotası/);
 });
 test('video Worker verification rejection never opens destination', async () => {
   const { calls, messages } = await harness('verify-fail');

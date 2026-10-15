@@ -35,9 +35,22 @@ const typeBytes = (value: string): Uint8Array => Uint8Array.from(value, c => c.c
 async function parseVideo(file: Blob, format: 'MP4' | 'MOV', check?: () => void): Promise<Parsed> {
   if (format !== 'MP4' && format !== 'MOV') fail('format')
   if (!Number.isSafeInteger(file.size) || file.size < 24 || file.size > MAX_FILE) fail('file size limit (1,000,000,000 bytes)')
+  let windowStart = -1
+  let windowBytes = new Uint8Array(0)
   const read = async (start: number, length: number): Promise<Uint8Array> => {
     if (!Number.isSafeInteger(start) || !Number.isSafeInteger(length) || start < 0 || length < 0 || length > CHUNK || start + length > file.size) fail('read bounds')
     check?.()
+    if (length <= 65536) {
+      if (start < windowStart || start + length > windowStart + windowBytes.length) {
+        const end = Math.min(file.size, start + 65536)
+        const bytes = new Uint8Array(await file.slice(start, end).arrayBuffer())
+        if (bytes.length !== end - start) fail('short read')
+        windowStart = start
+        windowBytes = bytes
+      }
+      check?.()
+      return windowBytes.subarray(start - windowStart, start - windowStart + length)
+    }
     const bytes = new Uint8Array(await file.slice(start, start + length).arrayBuffer())
     check?.()
     if (bytes.length !== length) fail('short read')

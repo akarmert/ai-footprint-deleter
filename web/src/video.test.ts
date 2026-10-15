@@ -150,6 +150,25 @@ test('incremental Blob reads never exceed 1MiB or read entire file', async () =>
   assert.ok(reads > 10)
 })
 
+test('parser reuses a bounded 64KiB window without swallowing cancellation or short reads', async () => {
+  let reads = 0
+  class Counted extends Blob {
+    slice(start = 0, end = this.size, type = ''): Blob {
+      reads++
+      assert.ok(end - start <= 65536)
+      return super.slice(start, end, type)
+    }
+  }
+  const file = new Counted([fixture({ mediaSize: 128 * 1024 })])
+  const scan = await scanVideo(file, 'MP4')
+  assert.equal(scan.cleaningBlocked, false)
+  assert.equal(reads, 4)
+  let checks = 0
+  await assert.rejects(scanVideo(file, 'MP4', () => { if (++checks === 10) throw new Error('cancel cached read') }), /cancel cached read/)
+  class Short extends Blob { slice(): Blob { return new Blob([]) } }
+  await assert.rejects(scanVideo(new Short([file]), 'MP4'), /short read/)
+})
+
 test('cooperative cancellation during scanning and output verification rejects', async () => {
   const file = fixture({ mediaSize: 2 * 1024 * 1024 })
   const cancelled = () => { throw new Error('cancelled') }

@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { validateSelection } from './media';
 import type { MetadataRecord } from './engine';
 import type { MediaScan, Response, VerifiedOutput, VideoResponse } from './protocol';
-import { chooseOutput, supportsDiskOutput } from './output';
+import { chooseOutput, chooseTemporaryDirectory, supportsDiskOutput } from './output';
 import './style.css';
 
 function App() {
@@ -24,6 +24,17 @@ function App() {
   const videoWorker = useRef(false);
   const [videoDone, setVideoDone] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [temporaryDirectory, setTemporaryDirectory] = useState<FileSystemDirectoryHandle>();
+  async function selectTemporaryDirectory() {
+    const version = generation.current;
+    setSaving(true); setError('');
+    try {
+      const directory = await chooseTemporaryDirectory();
+      if (generation.current === version) setTemporaryDirectory(directory);
+    } catch (cause) {
+      if (generation.current === version) setError(cause instanceof Error ? cause.message : 'Geçici klasör seçilemedi.');
+    } finally { if (generation.current === version) setSaving(false); }
+  }
   const [committing, setCommitting] = useState(false);
   const [uncertainCommit, setUncertainCommit] = useState(false);
   const cancelling = useRef(false);
@@ -37,7 +48,7 @@ function App() {
     worker.current = null; clearTimeout(timer.current);
   }
   useEffect(() => () => { stop(); revoke(); }, []);
-  function clear() { if (committingRef.current) return; cancelling.current = false; generation.current++; setVideoDone(false); setSaving(false); setUncertainCommit(false); stop(); revoke(); setFile(undefined); setScan(undefined); setOutput(undefined); setSelected([]); setConsent(false); setBusy(''); setError(''); if (input.current) input.current.value = ''; }
+  function clear() { if (committingRef.current) return; cancelling.current = false; generation.current++; setVideoDone(false); setSaving(false); setUncertainCommit(false); stop(); revoke(); setFile(undefined); setTemporaryDirectory(undefined); setScan(undefined); setOutput(undefined); setSelected([]); setConsent(false); setBusy(''); setError(''); if (input.current) input.current.value = ''; }
   function cancel() {
     if (committingRef.current) return;
     if (videoWorker.current && worker.current && busy) {
@@ -101,7 +112,7 @@ function App() {
         if (data.type === 'scan') { setScan(data.scan); setSelected([]); }
         else if (data.type === 'clean') { revoke(); setOutput(data.output); setSelected([]); }
         else if (data.type === 'video-done') { setVideoDone(true); setSelected([]); }
-        else if (data.type === 'error') { if (videoWorker.current) { active.terminate(); worker.current = null; setScan(undefined); setSelected([]); } revoke(); setOutput(undefined); setError(`${data.message}${'cleanupWarning' in data && data.cleanupWarning ? ` ${data.cleanupWarning}` : ''}`); }
+        else if (data.type === 'error') { if (videoWorker.current) { active.terminate(); worker.current = null; setScan(undefined); setSelected([]); if (input.current) input.current.value = ''; } revoke(); setOutput(undefined); setError(`${data.message}${'cleanupWarning' in data && data.cleanupWarning ? ` ${data.cleanupWarning}` : ''}`); }
       };
       const workerFailure = (message: string) => {
         if (worker.current !== active) return;
@@ -125,7 +136,7 @@ function App() {
         const handle = await chooseOutput(`${(file?.name ?? 'video').replace(/\.[^.]*$/, '')}-temiz.${scan.format.toLowerCase()}`);
         if (generation.current !== version || worker.current !== active) return;
         setBusy('clean'); expire(active);
-        active.postMessage({ type: 'clean', ids: selected, rightsConsent: consent, handle });
+        active.postMessage({ type: 'clean', ids: selected, rightsConsent: consent, handle, temporaryDirectory });
       } else {
         setBusy('clean'); expire(active);
         active.postMessage({ type:'clean', ids:selected, rightsConsent:consent });
@@ -175,6 +186,7 @@ function App() {
             return <article className="record" key={record.id}><label><input type="checkbox" checked={selected.includes(record.id)} disabled={!!busy || saving || !removable || scan.cleaningBlocked} onChange={() => toggle(record)} /><strong>{record.kind}</strong><span>{label} · {record.bytes.toLocaleString('tr-TR')} bayt</span></label><p>{record.reason}</p>{record.preview && <details><summary>Yerel metadata ayrıntısı</summary><pre>{record.preview}</pre></details>}</article>;
           })}</div>}</div>
           {scan?.records.some(r => r.requiresRightsConsent) && <label className="consent"><input type="checkbox" checked={consent} disabled={!!busy || saving || scan.cleaningBlocked} onChange={event => { setConsent(event.target.checked); setSelected([]); setVideoDone(false); setOutput(undefined); revoke(); }} />Telif/hak kayıtlarını kaldırmaya yetkiliyim. Seçtiğim bloktaki tüm alt alanların kaldırılacağını anlıyorum. Bu onay C2PA kaldırmayı etkinleştirmez.</label>}
+          {(scan?.format === 'MP4' || scan?.format === 'MOV') && <div className="output"><h3>Geçici video alanı</h3><p>Varsayılan OPFS kotası işlem öncesinde tahmin edilir; tahmin gerçek boş alan garantisi değildir. Kota hatasında veya büyük videolarda ayrı bir yerel klasör seçebilirsiniz. Bu klasöre geçici medya yazılır ve işlem sonunda silinir; çökmede kalabilir. Kaynak ve hedef için ayrı dosyalar kullanın.</p><button disabled={!!busy || saving || committing} onClick={selectTemporaryDirectory}>Geçici yerel klasör seç</button>{temporaryDirectory && <><p>Seçilen klasör: {temporaryDirectory.name}</p><button disabled={!!busy || saving || committing} onClick={() => setTemporaryDirectory(undefined)}>OPFS kullan</button></>}</div>}
           <div className="output"><h3>Temizle ve indir</h3><p>Görselde seçili bloklar kaldırılır; ICC, yön ve payload korunur. Videoda seçili metadata aynı boyutta boş alana dönüştürülür veya zaman alanları sıfırlanır; medya yeniden kodlanmaz. Doğrulama başarısızsa çıktı tamamlanmaz.</p>{videoDone && <div className="verification" role="status">Video çıktısı yeniden tarandı; seçili metadata temizliği ve diğer tüm baytların (medya, offset, süre, rotasyon ve senkronizasyon tabloları dahil) birebir korunması doğrulandı. Dosya diske kaydedildi.</div>}{output && <div className="verification" role="status"><p>Kaldırılan: {output.removed} · Korunan: {output.retained} · Desteklenmeyen (korundu): {output.scan.records.filter(r => r.status === 'unsupported').length}</p><p>Seçili blokların kaldırılması, kalan blok baytları, payload SHA-256, format, çözünürlük, alpha, orientation ve ICC kontrolleri başarılı.</p><details><summary>Payload SHA-256</summary><code>{output.payloadHash}</code></details></div>}<div className="actions"><button onClick={clean} disabled={!scan || !!busy || saving || !selected.length || scan.cleaningBlocked}>{scan?.format === 'MP4' || scan?.format === 'MOV' ? 'Temizle ve diske kaydet' : 'Seçilenleri temizle'} ({selected.length})</button><button onClick={download} disabled={!output || !!busy}>İndir</button><button className="text-button" disabled={committing || cancelling.current && !!busy || !file && !error} onClick={busy ? cancel : clear}>{busy ? 'İptal et' : 'Seçimi kaldır'}</button></div></div>
         </section>
       </div>

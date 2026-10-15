@@ -11,6 +11,11 @@ export async function chooseOutput(suggestedName: string): Promise<SaveHandle> {
   if (!supportsDiskOutput() || !picker) throw new Error('Doğrudan diske yazma desteklenmiyor.');
   return picker.call(window, { suggestedName });
 }
+export async function chooseTemporaryDirectory(): Promise<FileSystemDirectoryHandle> {
+  const picker = (window as Window & { showDirectoryPicker?: (options: { mode: 'readwrite' }) => Promise<FileSystemDirectoryHandle> }).showDirectoryPicker;
+  if (!window.isSecureContext || !picker) throw new Error('Geçici klasör seçimi desteklenmiyor; güncel Chrome/Edge kullanın.');
+  return picker.call(window, { mode: 'readwrite' });
+}
 export async function writeOutput(handle: { createWritable(): Promise<WritableTarget> }, chunks: AsyncIterable<Uint8Array>): Promise<void> {
   const target = await handle.createWritable();
   try {
