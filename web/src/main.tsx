@@ -1,7 +1,6 @@
 import { StrictMode, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { validateSelection } from './media';
-import type { MetadataRecord } from './engine';
 import type { MediaScan, Response, VerifiedOutput, VideoResponse } from './protocol';
 import { chooseOutput, chooseTemporaryDirectory, supportsDiskOutput } from './output';
 import './style.css';
@@ -10,8 +9,8 @@ function App() {
   const [file, setFile] = useState<File>();
   const [scan, setScan] = useState<MediaScan>();
   const [output, setOutput] = useState<VerifiedOutput>();
-  const [selected, setSelected] = useState<string[]>([]);
-  const [consent, setConsent] = useState(false);
+  const confirmation = useRef<HTMLDialogElement>(null);
+  const [pendingConsent, setPendingConsent] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState<'' | 'scan' | 'clean'>('');
   const [dragging, setDragging] = useState(false);
@@ -48,7 +47,7 @@ function App() {
     worker.current = null; clearTimeout(timer.current);
   }
   useEffect(() => () => { stop(); revoke(); }, []);
-  function clear() { if (committingRef.current) return; cancelling.current = false; generation.current++; setVideoDone(false); setSaving(false); setUncertainCommit(false); stop(); revoke(); setFile(undefined); setTemporaryDirectory(undefined); setScan(undefined); setOutput(undefined); setSelected([]); setConsent(false); setBusy(''); setError(''); if (input.current) input.current.value = ''; }
+  function clear() { if (committingRef.current) return; cancelling.current = false; generation.current++; setVideoDone(false); setSaving(false); setUncertainCommit(false); stop(); revoke(); setFile(undefined); setTemporaryDirectory(undefined); setScan(undefined); setOutput(undefined);  confirmation.current?.close(); setPendingConsent(false); setBusy(''); setError(''); if (input.current) input.current.value = ''; }
   function cancel() {
     if (committingRef.current) return;
     if (videoWorker.current && worker.current && busy) {
@@ -109,10 +108,10 @@ function App() {
         if ('cleanupWarning' in data && data.cleanupWarning) setError(data.cleanupWarning);
         else if (data.type !== 'error') setError('');
         if (data.type === 'cancelled') { clear(); setError(data.cleanupWarning || 'İşlem iptal edildi; disk yazımı tamamlanmadı.'); return; }
-        if (data.type === 'scan') { setScan(data.scan); setSelected([]); }
-        else if (data.type === 'clean') { revoke(); setOutput(data.output); setSelected([]); }
-        else if (data.type === 'video-done') { setVideoDone(true); setSelected([]); }
-        else if (data.type === 'error') { if (videoWorker.current) { active.terminate(); worker.current = null; setScan(undefined); setSelected([]); if (input.current) input.current.value = ''; } revoke(); setOutput(undefined); setError(`${data.message}${'cleanupWarning' in data && data.cleanupWarning ? ` ${data.cleanupWarning}` : ''}`); }
+        if (data.type === 'scan') { setScan(data.scan);  }
+        else if (data.type === 'clean') { revoke(); setOutput(data.output);  }
+        else if (data.type === 'video-done') { setVideoDone(true);  }
+        else if (data.type === 'error') { if (videoWorker.current) { active.terminate(); worker.current = null; setScan(undefined);  if (input.current) input.current.value = ''; } revoke(); setOutput(undefined); setError(`${data.message}${'cleanupWarning' in data && data.cleanupWarning ? ` ${data.cleanupWarning}` : ''}`); }
       };
       const workerFailure = (message: string) => {
         if (worker.current !== active) return;
@@ -125,8 +124,17 @@ function App() {
       expire(active); active.postMessage({ type:'scan', file:source, ...(video ? { format } : {}) });
     } catch (cause) { stop(); setBusy(''); setError(cause instanceof Error ? cause.message : 'Dosya seçilemedi.'); }
   }
-  async function clean() {
-    if (!worker.current || !scan || !selected.length || scan.cleaningBlocked || saving) return;
+  const eligible = scan?.cleaningBlocked ? [] : scan?.records.filter(record => record.status === 'cleanable' || record.status === 'protected' && record.requiresRightsConsent) ?? [];
+  function requestClean() {
+    if (!eligible.length || busy || saving || pendingConsent) return;
+    if (eligible.some(record => record.requiresRightsConsent)) {
+      setPendingConsent(true); confirmation.current?.showModal();
+    } else void clean(false);
+  }
+  async function clean(consent: boolean) {
+    if (!worker.current || !scan || !eligible.length || scan.cleaningBlocked || saving || busy) return;
+    if (eligible.some(record => record.requiresRightsConsent) && !consent) return;
+    const selected = eligible.map(record => record.id);
     const active = worker.current, version = generation.current;
     revoke(); setOutput(undefined); setVideoDone(false); setError('');
     try {
@@ -153,12 +161,16 @@ function App() {
     link.download = `${base}-temiz.${output.scan.format === 'JPEG' ? 'jpg' : output.scan.format.toLowerCase()}`;
     link.click();
   }
-  function toggle(record: MetadataRecord) { revoke(); setVideoDone(false); setOutput(undefined); setSelected(items => items.includes(record.id) ? items.filter(id => id !== record.id) : [...items,record.id]); }
-  const counts = (status: MetadataRecord['status']) => scan?.records.filter(r => r.status === status).length ?? 0;
+  const preserved = (scan?.records.length ?? 0) - eligible.length;
   return <div className="shell">
-    <header><a className="brand" href="/" aria-label="AI Footprint Cleaner ana sayfa"><span className="brand-mark">AF</span><span>AI Footprint <strong>Cleaner</strong></span></a><span className="phase">WEB / FAZ 3</span></header>
+    <dialog ref={confirmation} aria-labelledby="consent-title" onCancel={() => setPendingConsent(false)} onClose={() => setPendingConsent(false)}>
+      <h2 id="consent-title">Hak ve telif bilgileri için onay</h2>
+      <p>Temizlenebilir bloklar hak/telif bilgileri içerebilir. Bu kayıtları kaldırmaya yetkili olduğunuzu onaylıyor musunuz? Uygun blokların tüm alt alanları kaldırılır; ICC, görüntü yönü ve C2PA korumaları değişmez.</p>
+      <div className="dialog-actions"><button onClick={() => { confirmation.current?.close(); setPendingConsent(false); }}>Vazgeç</button><button className="primary" onClick={() => { confirmation.current?.close(); setPendingConsent(false); void clean(true); }}>Yetkim var, temizle</button></div>
+    </dialog>
+    <header><a className="brand" href="/" aria-label="AI Footprint Cleaner ana sayfa"><span className="brand-mark">AF</span><span>AI Footprint <strong>Cleaner</strong></span></a><span className="phase">TAMAMEN YEREL</span></header>
     <main>
-      <section className="intro"><p className="eyebrow">YEREL İŞLEME · SIFIR MEDYA YÜKLEMESİ</p><h1>Dosyanız sizde kalır.</h1><p>JPEG, PNG, WebP, MP4 ve MOV metadata’sını yerel olarak inceleyin.<br className="desktop-break" /> Desteklenen blokları yeniden sıkıştırmadan kaldırın.</p></section>
+      <section className="intro"><p className="eyebrow">YEREL İŞLEME · SIFIR MEDYA YÜKLEMESİ</p><h1>Daha az metadata.<br />Aynı dosya kalitesi.</h1><p>Dosyanızı seçin, desteklenen metadata’yı tek adımda temizleyin.<br className="desktop-break" /> Orijinaliniz sizde kalır. Yeniden kodlama ve sunucuya yükleme yok.</p></section>
       <div className="workspace">
         <section className="panel source-panel" aria-labelledby="source-title"><div className="panel-heading"><h2 id="source-title">01 <span>Dosya seçimi</span></h2><span className="chip">Yalnız yerel</span></div>
           <div className={`dropzone ${dragging ? 'dragging' : ''}`} onDragOver={event => { event.preventDefault(); setDragging(true); }} onDragLeave={() => setDragging(false)} onDrop={event => { event.preventDefault(); setDragging(false); select(event.dataTransfer.files); }}>
@@ -168,7 +180,7 @@ function App() {
             <button className="primary" onClick={() => input.current?.click()} disabled={!supported || videoWorker.current && !!busy || committing}>Dosya seç</button><p className="formats">JPEG · PNG · WebP · MP4 · MOV</p>
           </div>
           <div className="limits"><span>Görsel <strong>128 MiB</strong></span><span>Video <strong>1.000.000.000 bayt</strong></span></div>
-          <div className="file-details"><h3>Seçili dosya</h3>{file ? <dl><div><dt>Ad</dt><dd className="filename">{file.name}</dd></div><div><dt>Format</dt><dd>{scan?.format ?? 'Doğrulanmadı'}</dd></div><div><dt>Boyut</dt><dd>{file.size.toLocaleString('tr-TR')} bayt</dd></div>{scan && <><div><dt>Medya</dt><dd>{scan.width} × {scan.height} · Alpha: {scan.alpha ? 'var' : 'yok'} · Orientation: {scan.orientation ?? 'bilinmiyor'}</dd></div><div><dt>C2PA</dt><dd>{scan.cleaningBlocked ? 'Kaynak kaydı var/belirsiz; imza doğrulanmadı' : 'Bilinen C2PA kaydı saptanmadı; yokluğu garanti değil'}</dd></div></>}</dl> : <p className="muted">Henüz dosya seçilmedi.</p>}</div>
+          <div className="file-details"><h3>Seçili dosya</h3>{file ? <dl><div><dt>Ad</dt><dd className="filename">{file.name}</dd></div><div><dt>Format</dt><dd>{scan?.format ?? 'Doğrulanmadı'}</dd></div><div><dt>Boyut</dt><dd>{file.size.toLocaleString('tr-TR')} bayt</dd></div></dl> : <p className="muted">Henüz dosya seçilmedi.</p>}</div>
           <p className="privacy-note">Görsel orijinali değiştirilmez. Videoda ayrı bir hedef dosya seçin; kaynak dosyayı işlem sırasında yeniden adlandırmayın/taşımayın. Piksel decode/yeniden kodlama yapılmaz. Kapsayıcı doğrulaması tam codec geçerliliği veya tüm kişisel bilgilerin kaldırıldığı garantisi değildir.</p>
         </section>
         <section className="panel inspection-panel" aria-labelledby="inspection-title"><div className="panel-heading"><h2 id="inspection-title">02 <span>Metadata ve işlem</span></h2></div>
@@ -179,15 +191,12 @@ function App() {
               committingRef.current = false; setCommitting(false); clear();
               setError('Disk sonucu belirsiz olarak izleme bırakıldı; bu iptal/geri alma garantisi değildir. Hedefi kontrol edin ve geçici site verilerini temizleyin.');
             }}>Belirsiz sonucu kabul et ve seçimi sıfırla</button>}
-          {scan && <><div className="summary-counts"><span>Temizlenebilir: {counts('cleanable')}</span><span>Korunan: {counts('protected')}</span><span>Desteklenmeyen: {counts('unsupported')}</span></div>{scan.notes.map((note,i) => <p className="warning scan-note" key={i}>{note}</p>)}{scan.cleaningBlocked && <p className="warning">Kaynak/imza kaydı mevcut veya belirsiz: bu dosyada tüm temizleme engellendi. C2PA kaldırma ve imza doğrulama desteklenmiyor.</p>}</>}
-          <div className="metadata"><h3>Metadata blokları</h3>{scan && <p className="scan-note">Önizlemeler en fazla 512 karakterdir. Bloklar alt alanlar hâlinde düzenlenmez; telif bilgisi içerebilen bloklar yetki onayına kadar korunur.</p>}{!scan ? <p>Dosya seçildiğinde destek kapsamı ve kayıtlar burada görünür.</p> : !scan.records.length ? <p>Desteklenen metadata blokları bulunamadı. Bu, tüm metadata’nın yokluğu kanıtı değildir.</p> : <div className="record-list">{scan.records.map(record => {
-            const removable = record.status === 'cleanable' && (!record.requiresRightsConsent || consent) || record.status === 'protected' && record.requiresRightsConsent && consent;
-            const label = record.status === 'cleanable' ? 'Temizlenebilir' : record.status === 'protected' ? record.requiresRightsConsent && consent ? 'Yetki onayıyla seçilebilir' : 'Korunan' : 'Desteklenmeyen';
-            return <article className="record" key={record.id}><label><input type="checkbox" checked={selected.includes(record.id)} disabled={!!busy || saving || !removable || scan.cleaningBlocked} onChange={() => toggle(record)} /><strong>{record.kind}</strong><span>{label} · {record.bytes.toLocaleString('tr-TR')} bayt</span></label><p>{record.reason}</p>{record.preview && <details><summary>Yerel metadata ayrıntısı</summary><pre>{record.preview}</pre></details>}</article>;
-          })}</div>}</div>
-          {scan?.records.some(r => r.requiresRightsConsent) && <label className="consent"><input type="checkbox" checked={consent} disabled={!!busy || saving || scan.cleaningBlocked} onChange={event => { setConsent(event.target.checked); setSelected([]); setVideoDone(false); setOutput(undefined); revoke(); }} />Telif/hak kayıtlarını kaldırmaya yetkiliyim. Seçtiğim bloktaki tüm alt alanların kaldırılacağını anlıyorum. Bu onay C2PA kaldırmayı etkinleştirmez.</label>}
+          {scan && <><div className="summary-counts"><div><strong>{scan.records.length}</strong><span>Bulunan kayıt</span></div><div><strong>{eligible.length}</strong><span>Temizlenebilir</span></div><div><strong>{preserved}</strong><span>Korunan</span></div></div>{scan.cleaningBlocked ? <p className="warning">Kaynak/imza kaydı mevcut, belirsiz veya yapı güvenle işlenemiyor: tüm temizleme engellendi. C2PA kaldırma ve imza doğrulama desteklenmiyor.</p> : !eligible.length ? <p className="warning">{scan.records.length ? 'Kaldırılabilecek metadata bulunamadı. Renk profili, görüntü yönü veya desteklenmeyen kayıtlar güvenlik için korunuyor.' : 'Desteklenen metadata kaydı bulunamadı; temizlenecek kayıt yok. Bu, tüm metadata’nın yokluğu garantisi değildir.'}</p> : <p className="scan-note">Uygun kayıtlar otomatik temizlenir. Hak/telif bilgisi için gerektiğinde tek onay istenir.</p>}</>}
+          <div className="actions"><button className="primary clean-button" onClick={requestClean} disabled={!scan || !!busy || saving || pendingConsent || !eligible.length || !!output || videoDone}>Metadata'yı Temizle</button>{output && <button className="download-button" onClick={download} disabled={!!busy}>Temizlenmiş Dosyayı İndir</button>}<button className="text-button" disabled={committing || cancelling.current && !!busy || !file && !error} onClick={busy ? cancel : clear}>{busy ? 'İptal et' : 'Seçimi kaldır'}</button></div>
+          {output && <div className="verification" role="status"><strong>Çıktı doğrulandı, indirmeye hazır.</strong><p>Kaldırılan: {output.removed} · Korunan: {output.retained}. Medya payload'ı, ICC ve görüntü yönü doğrulandı.</p></div>}
+          {videoDone && <div className="verification" role="status"><strong>Temizlenmiş dosya seçtiğiniz konuma kaydedildi.</strong><p>Video yeniden tarandı ve tüm baytları beklenen dönüşümle karşılaştırıldı. Büyük videolar RAM'e alınmadan doğrudan diske kaydedilir; ayrı indirme gerekmez.</p></div>}
+          {scan && <details className="metadata"><summary>Detayları göster</summary><p className="scan-note">{scan.width} × {scan.height} · Yön: {scan.orientation ?? 'bilinmiyor'}. Sayılar alan değil metadata bloklarını gösterir. Önizlemeler en fazla 512 karakterdir.</p>{scan.notes.map((note, i) => <p className="warning" key={i}>{note}</p>)}<div className="record-list">{scan.records.map(record => <article className="record" key={record.id}><div className="record-heading"><strong>{record.kind}</strong><span>{eligible.some(item => item.id === record.id) ? record.requiresRightsConsent ? 'Yetki onayıyla' : 'Temizlenebilir' : 'Korunur'} · {record.bytes.toLocaleString('tr-TR')} bayt</span></div><p>{record.reason}</p>{record.preview && <pre>{record.preview}</pre>}</article>)}</div>{output && <details><summary>Payload SHA-256</summary><code>{output.payloadHash}</code></details>}</details>}
           {(scan?.format === 'MP4' || scan?.format === 'MOV') && <div className="output"><h3>Geçici video alanı</h3><p>Varsayılan OPFS kotası işlem öncesinde tahmin edilir; tahmin gerçek boş alan garantisi değildir. Kota hatasında veya büyük videolarda ayrı bir yerel klasör seçebilirsiniz. Bu klasöre geçici medya yazılır ve işlem sonunda silinir; çökmede kalabilir. Kaynak ve hedef için ayrı dosyalar kullanın.</p><button disabled={!!busy || saving || committing} onClick={selectTemporaryDirectory}>Geçici yerel klasör seç</button>{temporaryDirectory && <><p>Seçilen klasör: {temporaryDirectory.name}</p><button disabled={!!busy || saving || committing} onClick={() => setTemporaryDirectory(undefined)}>OPFS kullan</button></>}</div>}
-          <div className="output"><h3>Temizle ve indir</h3><p>Görselde seçili bloklar kaldırılır; ICC, yön ve payload korunur. Videoda seçili metadata aynı boyutta boş alana dönüştürülür veya zaman alanları sıfırlanır; medya yeniden kodlanmaz. Doğrulama başarısızsa çıktı tamamlanmaz.</p>{videoDone && <div className="verification" role="status">Video çıktısı yeniden tarandı; seçili metadata temizliği ve diğer tüm baytların (medya, offset, süre, rotasyon ve senkronizasyon tabloları dahil) birebir korunması doğrulandı. Dosya diske kaydedildi.</div>}{output && <div className="verification" role="status"><p>Kaldırılan: {output.removed} · Korunan: {output.retained} · Desteklenmeyen (korundu): {output.scan.records.filter(r => r.status === 'unsupported').length}</p><p>Seçili blokların kaldırılması, kalan blok baytları, payload SHA-256, format, çözünürlük, alpha, orientation ve ICC kontrolleri başarılı.</p><details><summary>Payload SHA-256</summary><code>{output.payloadHash}</code></details></div>}<div className="actions"><button onClick={clean} disabled={!scan || !!busy || saving || !selected.length || scan.cleaningBlocked}>{scan?.format === 'MP4' || scan?.format === 'MOV' ? 'Temizle ve diske kaydet' : 'Seçilenleri temizle'} ({selected.length})</button><button onClick={download} disabled={!output || !!busy}>İndir</button><button className="text-button" disabled={committing || cancelling.current && !!busy || !file && !error} onClick={busy ? cancel : clear}>{busy ? 'İptal et' : 'Seçimi kaldır'}</button></div></div>
         </section>
       </div>
       <aside className="capabilities"><div><h3>Güvenli yerel işleme</h3><p>Web Worker: <strong>{supported ? 'destekleniyor' : 'desteklenmiyor'}</strong> · Tek dosya · Yeniden sıkıştırma yok</p></div><p className="muted">Görseller için sınırlı tam dosya belleği ve doğrulanmış Blob indirmesi kullanılır. Video parçalı işlenir; doğrulama için geçici yerel disk alanı kullanılır; sonunda silme denenir, başarısızsa uyarılır. Video kaydı HTTPS üzerinde güncel Chrome/Edge doğrudan disk desteği gerektirir. Sekme/tarayıcı çökmesinde geçici dosya kalabilir. Görünmez filigran kaldırma veya AI dedektörlerini yanıltma garantisi verilmez. Yalnız yetkili olduğunuz dosyalarda kullanın.</p></aside>

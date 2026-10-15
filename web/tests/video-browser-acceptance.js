@@ -12,13 +12,12 @@ async page => {
   page.on('request', listener);
   await page.locator('#media').setInputFiles(fixture);
   await page.getByText('Metadata taraması tamamlandı', { exact: true }).waitFor();
-  await page.locator('.consent input').check();
-  for (const box of await page.locator('.record input:not(:disabled)').all()) await box.check();
   await page.evaluate(async () => {
     const root = await navigator.storage.getDirectory();
     window.showSaveFilePicker = async () => root.getFileHandle('afc-acceptance-output.mp4', { create: true });
   });
-  await page.getByRole('button', { name: /Temizle ve diske kaydet/ }).click();
+  await page.getByRole('button', { name: "Metadata'yı Temizle", exact: true }).click();
+  await page.getByRole('button', { name: 'Yetkim var, temizle', exact: true }).click();
   await page.getByText('Doğrulandı · Diske kaydedildi', { exact: true }).waitFor();
   const disk = await page.evaluate(async () => {
     const root = await navigator.storage.getDirectory();
@@ -28,7 +27,7 @@ async page => {
     return { size: file.size, stagingLeft: names.filter(n => n.startsWith('afc-video-')) };
   });
   assert(disk.size > 0 && !disk.stagingLeft.length, 'Output missing or staging leaked');
-  assert(await page.getByRole('button', { name: 'İndir', exact: true }).isDisabled(), 'Video offered Blob download');
+  assert(await page.getByRole('button', { name: 'Temizlenmiş Dosyayı İndir', exact: true }).count() === 0, 'Video offered Blob download');
   page.off('request', listener);
   assert(requests.every(r => r.method === 'GET' && r.body === null && /\/assets\/video.worker-[\w-]+\.js$/.test(r.url)), 'Unexpected network request');
   // A nonresponding Worker must be bounded by the cancellation watchdog.
@@ -62,8 +61,7 @@ async page => {
     window.setTimeout = (fn, ms, ...args) => real(fn, ms === 120000 ? 40 : ms, ...args);
   });
   await page.locator('#media').setInputFiles(fixture);
-  await page.locator('.record input').check();
-  await page.getByRole('button', { name: /Temizle ve diske kaydet/ }).click();
+  await page.getByRole('button', { name: "Metadata'yı Temizle", exact: true }).click();
   await page.getByRole('button', { name: 'Belirsiz sonucu kabul et ve seçimi sıfırla' }).click();
   await page.evaluate(() => window.testVideoWorkers[0].onmessage({ data: { type: 'video-done', scan: {}, removed: 1 } }));
   assert(await page.locator('#media').isEnabled(), 'Recovery did not unlock source');

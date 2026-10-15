@@ -12,16 +12,18 @@ async (page) => {
   for (const ext of ['jpg', 'png', 'webp']) {
     await page.locator('input[type=file]').setInputFiles(`${root}/image-1.${ext}`);
     await page.getByText('Metadata taraması tamamlandı', { exact: true }).waitFor();
-    await page.locator('.consent input').check();
-    const records = page.locator('.record input:not(:disabled)');
-    for (let i = 0; i < await records.count(); i++) await records.nth(i).check();
-    await page.getByRole('button', { name: /Seçilenleri temizle/ }).click();
+    assert(await page.locator('input[type=checkbox]').count() === 0, 'Per-record selection remains');
+    await page.getByRole('button', { name: "Metadata'yı Temizle", exact: true }).click();
+    await page.getByRole('button', { name: 'Vazgeç', exact: true }).click();
+    assert(await page.locator('.verification').count() === 0, 'Rejected consent produced output');
+    await page.getByRole('button', { name: "Metadata'yı Temizle", exact: true }).click();
+    await page.getByRole('button', { name: 'Yetkim var, temizle', exact: true }).click();
     await page.getByText('Temizlendi · Çıktı doğrulandı', { exact: true }).waitFor();
     const waiting = page.waitForEvent('download');
-    await page.getByRole('button', { name: 'İndir', exact: true }).click();
+    await page.getByRole('button', { name: 'Temizlenmiş Dosyayı İndir', exact: true }).click();
     results.push({ ext, name: (await waiting).suggestedFilename(), checks: await page.locator('.verification').innerText() });
-    await page.locator('.consent input').uncheck();
-    assert(await page.getByRole('button', { name: 'İndir', exact: true }).isDisabled(), 'Consent change retained output');
+    await page.getByRole('button', { name: 'Seçimi kaldır', exact: true }).click();
+    assert(await page.getByRole('button', { name: 'Temizlenmiş Dosyayı İndir', exact: true }).count() === 0, 'Cleared source retained output');
   }
   page.off('request', listener);
   assert(requests.every(r => r.method === 'GET' && r.body === null && /\/assets\/inspect.worker-[\w-]+\.js$/.test(r.url)), 'Unexpected media/network request');
@@ -49,11 +51,10 @@ async (page) => {
   await page.locator('input[type=file]').setInputFiles(`${root}/image-1.webp`);
   await page.getByText('Metadata taraması tamamlandı', { exact: true }).waitFor();
   assert(await page.locator('.filename').innerText() === 'image-1.webp', 'Stale scan replaced current file');
-  await page.locator('.consent input').check();
-  await page.locator('.record input:not(:disabled)').check();
-  await page.getByRole('button', { name: /Seçilenleri temizle/ }).click();
+  await page.getByRole('button', { name: "Metadata'yı Temizle", exact: true }).click();
+  await page.getByRole('button', { name: 'Yetkim var, temizle', exact: true }).click();
   await page.getByRole('button', { name: 'İptal et', exact: true }).click();
-  assert(await page.getByRole('button', { name: 'İndir', exact: true }).isDisabled(), 'Canceled output downloadable');
+  assert(await page.getByRole('button', { name: 'Temizlenmiş Dosyayı İndir', exact: true }).count() === 0, 'Canceled output downloadable');
   assert(await page.evaluate(() => window.testWorkers.every(worker => worker.terminated)), 'Worker not terminated');
   for (const mode of ['timeout', 'onerror', 'onmessageerror']) {
     await page.reload();
@@ -68,7 +69,7 @@ async (page) => {
     await page.locator('input[type=file]').setInputFiles(`${root}/image-1.png`);
     if (mode !== 'timeout') await page.evaluate(mode => window.testWorkers[0][mode](), mode);
     await page.getByRole('alert').waitFor();
-    assert(await page.getByRole('button', { name: 'İndir', exact: true }).isDisabled(), `${mode}: download enabled`);
+    assert(await page.getByRole('button', { name: 'Temizlenmiş Dosyayı İndir', exact: true }).count() === 0, `${mode}: download enabled`);
     assert(await page.evaluate(() => window.testWorkers[0].terminated), `${mode}: worker active`);
   }
   // Inject a hashing failure inside the ACTUAL emitted worker. No output must escape.
@@ -80,13 +81,32 @@ async (page) => {
   });
   await page.locator('input[type=file]').setInputFiles(`${root}/image-1.png`);
   await page.getByText('Metadata taraması tamamlandı', { exact: true }).waitFor();
-  await page.locator('.consent input').check();
-  await page.locator('.record input:not(:disabled)').first().check();
-  await page.getByRole('button', { name: /Seçilenleri temizle/ }).click();
+  await page.getByRole('button', { name: "Metadata'yı Temizle", exact: true }).click();
+  await page.getByRole('button', { name: 'Yetkim var, temizle', exact: true }).click();
   await page.getByText('Kontrollü hash hatası', { exact: true }).waitFor();
-  assert(await page.getByRole('button', { name: 'İndir', exact: true }).isDisabled(), 'Hash failure exposed download');
+  assert(await page.getByRole('button', { name: 'Temizlenmiş Dosyayı İndir', exact: true }).count() === 0, 'Hash failure exposed download');
   assert(await page.locator('.verification').count() === 0, 'Hash failure exposed verified result');
   await page.unroute('**/assets/inspect.worker-*.js');
   await page.reload();
-  return { results, requests, storage, lifecycle: 'cancel/replace/consent/timeout/error/messageerror and actual worker hash-failure passed' };
+  await page.evaluate(async () => {
+    const canvas = document.createElement('canvas'); canvas.width = 16; canvas.height = 16;
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg'));
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    window.cleanFixture = bytes;
+    const data = new DataTransfer();
+    data.items.add(new File([bytes.slice(0, 2), new Uint8Array([255,235,0,8,99,50,112,97,0,0]), bytes.slice(2)], 'provenance.jpg', { type: 'image/jpeg' }));
+    const input = document.querySelector('#media'); input.files = data.files; input.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  await page.getByText(/tüm temizleme engellendi/).waitFor();
+  assert(await page.getByRole('button', { name: "Metadata'yı Temizle", exact: true }).isDisabled(), 'Provenance cleanup enabled');
+  assert(await page.locator('dialog[open]').count() === 0, 'Provenance can obtain consent');
+  await page.evaluate(() => {
+    const data = new DataTransfer(); data.items.add(new File([window.cleanFixture], 'empty.jpg', { type: 'image/jpeg' }));
+    const input = document.querySelector('#media'); input.files = data.files; input.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  await page.getByText('Metadata taraması tamamlandı', { exact: true }).waitFor();
+  await page.getByText(/temizlenecek kayıt yok/).waitFor();
+  assert(await page.getByRole('button', { name: "Metadata'yı Temizle", exact: true }).isDisabled(), 'Empty cleanup enabled');
+  assert(await page.locator('.verification').count() === 0, 'Empty source falsely verified');
+  return { results, requests, storage, provenance: 'blocked', empty: 'explained', lifecycle: 'cancel/replace/consent/timeout/error/messageerror and actual worker hash-failure passed' };
 }
