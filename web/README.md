@@ -24,18 +24,44 @@ docker run --rm -p 3000:3000 ai-footprint-web
 
 ## Railway
 
-1. Depoyu Railway servisine bağlayın; **Root Directory** değerini `/web` yapın.
-2. **Railway Config File** yolunu `/web/railway.toml` olarak belirtin. Bu yol root directory ayarına göre göreli değildir.
-3. Dockerfile builder ve `Dockerfile` yolunu seçin. Docker CMD `node server.mjs` olduğundan ek build/start override gerekmez.
-4. Healthcheck yolu `/healthz`, zaman aşımı 30 saniyedir. Railway'in sağladığı `PORT` değerini kullanın ve public domain oluşturun.
+Yayın halka açıktır: login, şifre, üyelik veya erişim kısıtı eklenmez. Medya yükleme endpoint'i, proxy veya analitik yoktur. Railway hesabına erişimi olan kişi aşağıdaki ayarları **Dashboard** üzerinden uygular; yeni servis `railway.toml` desteğine bağımlı değildir.
 
-`/healthz` işlemin çalıştığını bildirir; bütün frontend dosyalarının doğruluğunu veya temizleme işlevini doğrulamaz. Bu çalışma herhangi bir deploy veya domain oluşturmaz.
+| Dashboard ayarı | Değer |
+|---|---|
+| Source | `akarmert/ai-footprint-deleter`, branch `main`; deployment SHA'sını kaydedin |
+| Root Directory | `/web` |
+| Build | Kaynak kökündeki `Dockerfile` otomatik algılanmalı; build logunda `Using detected Dockerfile!` veya Dockerfile kullanımı doğrulanmalı |
+| Config File | `/web/railway.toml` yolunu zorunlu ayarlamayın; eski serviste config override varsa kaynağını kontrol edin |
+| Build / Start override | Boş; Dockerfile `npm ci`, `npm run build` ve `CMD ["node", "server.mjs"]` sağlar |
+| Healthcheck Path / Timeout | `/healthz` / 30 saniye |
+| Restart Policy / Max Retries | On Failure / 3 |
+| Port | Railway'in `PORT` değerini kullanın; public networking hedef portunu uygulamanın dinlediği portla eşleştirin (`PORT` yoksa 3000) |
+| Networking | Generate Domain; Dashboard'un verdiği gerçek HTTPS URL'sini kaydedin |
+| Secrets / Volumes | Uygulama için gerekmez; frontend'e token/şifre eklemeyin, medya volume'u bağlamayın |
 
-12 Ekim 2026 tarihinde kontrol edilen resmi belgeler:
-- [Monorepo / Root Directory ve config yolu](https://docs.railway.com/guides/monorepo)
-- [Config as Code ve Dockerfile/healthcheck alanları](https://docs.railway.com/reference/config-as-code)
+`/healthz` yalnız işlemin çalıştığını bildirir; bütün frontend dosyalarının doğruluğunu veya temizleme işlevini doğrulamaz. Public domain oluşturmak ve deployment'ı başlatmak Dashboard erişimi gerektirir. Bu README bir yayının gerçekleştiği kanıtı değildir.
 
-İkinci belge Config as Code özelliğini deprecated olarak işaretliyor ve mevcut dosyaların legacy servislerde 1 Aralık 2026'ya kadar çalışacağını belirtiyor. Bu nedenle istenen `railway.toml` uyumluluk dosyasıdır; yeni serviste destek garanti edilmez. Gerekirse aynı Dockerfile ve healthcheck ayarlarını dashboard üzerinden uygulayın; Infrastructure as Code geçişi bu temelin kapsamı dışındadır.
+15 Ekim 2026 tarihinde kontrol edilen resmi belgeler:
+- [Monorepo / Root Directory](https://docs.railway.com/guides/monorepo)
+- [Dockerfile otomatik algılama](https://docs.railway.com/builds/dockerfiles)
+- [Config as Code](https://docs.railway.com/reference/config-as-code)
+
+Config as Code deprecated; resmi belge legacy servislerde mevcut dosyaların 1 Aralık 2026'ya kadar çalışacağını belirtiyor. Depodaki `railway.toml` yalnız eski servis uyumluluğu için korunur; yeni kurulumun ayar kaynağı yukarıdaki Dashboard tablosudur.
+
+### Faz 4 manuel yayın ve kabul kapıları
+
+**Durum — 15 Ekim 2026: PARTIAL, yayın doğrulanmadı.** Başlangıç GitHub/yerel `main`: `475bd0dc4bc9410e3d06fa6c2c20ddd3842b63d7`. Production URL depoda bulunamadı; Railway erişimi/CLI yok, URL tahmin edilmedi. Docker yok, WSL kurulu değil, native Chrome/Edge bağlantısı yok. Önceki çalıştırmada bu SHA üzerinde web **125 PASS / 1 Windows symlink SKIP**, production build/TypeScript **PASS**, Python **322 PASS**, `pip check` **PASS**; bu güncelleme yalnız dokümantasyondur. Docker build/Linux symlink ve production/native testleri **YAPILMADI**; geçen test sayılmaz.
+
+1. **Railway operatörü:** Dashboard tablosunu uygulayın; Dockerfile build logunu, çalışan SHA'yı, deployment durumunu ve Generate Domain çıktısı HTTPS URL'sini kaydedin. URL olmadan production kabul testi yapılamaz. Başarısız build/deployment'ı başarılı diye işaretlemeyin.
+2. **Production HTTP:** Gerçek URL üzerinde `/healthz` için 200 ve `ok`, `/` ve `/workspace` için uygulama HTML'i, eksik asset ve `/upload` için 404 doğrulayın. HTTP→HTTPS yönlendirmesini ve geçerli sertifikayı kontrol edin. `Content-Security-Policy` içinde `connect-src 'none'`, `worker-src 'self'`; ayrıca `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, HSTS, COOP/CORP `same-origin` ve `Cache-Control: no-store` kontrol edin. POST `/upload` gövdesiz 405 olmalı; gerçek medya ile upload denemeyin.
+3. **Production tarayıcı:** DevTools Network açıkken JPEG/PNG/WebP seçin, izin verilen metadata'yı temizleyip indirin. Doğrulanmış çıktı, geçerli dosya ve beklenen payload eşitliğini kontrol edin. Ağda yalnız statik GET/HEAD ve aynı-origin Worker scriptleri olmalı; dosya adı/metadata/medya içeren istek, analytics veya upload olmamalı. Önceki localhost kanıtları production kanıtı yerine geçmez.
+4. **Native Windows 11 Chrome ve Edge:** Sürümü kaydedin; normal profil kullanın, CDP kota override uygulamayın. Gerçek 500 MB ve sınır altındaki yaklaşık 1 GB MP4/MOV fixture'larında OS dosya seçicisini kullanın. Kaynakların tam SHA-256 değerlerini önce/sonra karşılaştırın. Önce varsayılan OPFS akışını ölçün; kota hatası yalnız gerçekten gerçekleşirse FAIL diye kaydedin, normal profilde zorla başarısız varsaymayın. `navigator.storage.estimate()` kullanım/kota değerlerini kaydedin; bunlar kapasite garantisi değildir.
+5. **Harici geçici klasör:** `Geçici yerel klasör seç` ile yalnız disposable test klasörünü native picker'da seçin; ardından ayrı hedef seçin. Yaklaşık 1 GB çıktı için doğrulama ve `close()` tamamlanmadan başarı görünmemeli. Dosya boyutu, süre, RAM örnekleme aralığı/tepe, geçici+hedef disk kullanım tepesi ve cleanup sonrasını kaydedin. İndirme/Blob veya kota override sonucu native kabul yerine sayılmaz.
+6. **Bütünlük:** Her gerçek kaynak ve çıktı için `ffprobe -v error -show_entries format=size,duration -of json "DOSYA"` ve `ffmpeg -v error -i "DOSYA" -map 0:v -map 0:a -c copy -f streamhash -hash sha256 -` çalıştırın. Boyut/süre ve tüm video/ses stream hash'leri eşleşmeli; temizleme kapsamı dışındaki baytların Worker karşılaştırması da başarılı olmalı.
+7. **Güvenli hata testleri:** Yalnız disposable hedeflerin mevcut dosya üzerine yazılması/abort, seçici iptali ve izin reddi denenmeli. Kaynağı hedef seçerek reddedildiğini doğrulayın; kaynağı işlem sırasında taşımayın/yeniden adlandırmayın. Disk doluluğunu yalnız kota sınırlı disposable bir test diskiyle sınayın, host diski doldurmayın. Çökme testini yalnız ayrı disposable browser profiliyle yapın, kullanıcı tarayıcısını kapatmayın. Yeniden açıldığında kalan `afc-video-*.tmp` dosyalarını kaydedip yalnız testin oluşturduklarını kaldırın; çökme sonrası otomatik cleanup garantisi yoktur.
+8. **Docker/Linux kapısı:** Docker olan makinede `web/` içinden `docker build -t ai-footprint-web .` ve `docker run --rm -p 3000:3000 ai-footprint-web` ile smoke test yapın. Linux Node 24 + ffmpeg ortamında `npm ci`, `npm test`, `npm run build` çalıştırın; symlink testi SKIP olmamalı. Mevcut runtime imajında test kaynakları/ffmpeg yoktur; yalnız runtime container'ın açılması regresyon kanıtı değildir.
+
+Her satırı PASS/PARTIAL/FAIL ve ölçüm/log ile doldurun; kritik native/Linux/production kapıları tamamlanmadan Faz 4'ü veya yayını kabul edildi saymayın. Önceki Faz 3 ikinci bağımsız reviewer sağlayıcı `404 NOT_FOUND` nedeniyle eksiktir; dokümantasyon güncellemesi bu eksikliği gidermiş sayılmaz.
 
 ## Gizlilik ve sunucu sınırı
 
