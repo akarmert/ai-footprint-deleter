@@ -9,10 +9,11 @@ export function MetadataResults({ scan, file }: { scan: MediaScan; file: File })
   const sections = categories.filter(category => result.fields.some(field => field.category === category.id));
   return <section className="panel metadata-results" aria-labelledby="results-title">
     <div className="panel-heading"><h2 id="results-title">TARAMA <span>Metadata sonuçları</span></h2><span className="chip">Kaynak dosya</span></div>
-    <div className={`footprint-status ${result.aiState === 'declared' ? 'has-footprints' : ''}`} role="status">
+    <div className={`footprint-status ${result.aiState === 'declared' ? 'has-footprints' : result.aiState === 'uncertain' ? 'uncertain-footprints' : ''}`} role="status">
       <p className="result-filename">{file.name}</p>
-      <h3>{result.aiState === 'declared' ? 'AI üretim beyanı bulundu' : result.aiState === 'uncertain' ? 'Provenance bulundu, AI durumu belirsiz' : 'AI üretim beyanı bulunamadı'}</h3>
+      <h3>{(result.aiState === 'declared' || result.aiState === 'uncertain') && <svg className="status-warning-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"><path d="M10.3 4.5 2.6 18a2 2 0 0 0 1.7 3h15.4a2 2 0 0 0 1.7-3L13.7 4.5a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4m0 4h.01"/></svg>}<span>{result.aiState === 'declared' ? 'AI üretim beyanı bulundu' : result.aiState === 'uncertain' ? 'Provenance bulundu, AI durumu belirsiz' : 'AI üretim beyanı bulunamadı'}</span></h3>
       <p>İncelenebilen kayıtlarda {result.declarationCount} açık beyan kaynağı. Metin tabanlı araç/parametre ipuçları: {result.aiCount} blok; bunlar tek başına AI üretim kanıtı değildir.</p>
+      {result.aiState === 'declared' && <p className="status-caution">Bu beyan AI üretiminin kesin kanıtı veya doğrulanmış imza sonucu değildir.</p>}
       {result.textDeclarations.map(record => <p key={record.id}>Doğrulanmamış metadata beyanı: {record.kind} · {record.id}</p>)}
       {result.c2paSources.map(source => <p key={source}>Doğrulanmamış C2PA beyanı: {source}</p>)}
       {scan.provenance?.manifests.map((manifest, index) => <p key={index}>Claim Generator: {manifest.claimGenerator.join(' · ') || 'Çözümlenemedi'} · Kaydı oluşturan araçtır; AI model adı değildir.</p>)}

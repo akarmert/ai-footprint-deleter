@@ -22,6 +22,22 @@ async (page) => {
   };
   await upload(true);
   const results=page.locator('.metadata-results');
+  const checkStatus = async (state, background, headingColor, icon) => {
+    for (const width of [320,390,768,1320]) {
+      await page.setViewportSize({width,height:1000});
+      const card = results.locator('.footprint-status');
+      const styles = await card.evaluate(element => {
+        const style = getComputedStyle(element);
+        return {background:style.backgroundColor,heading:getComputedStyle(element.querySelector('h3')).color,overflow:element.scrollWidth>element.clientWidth+1};
+      });
+      assert(styles.background===background && styles.heading===headingColor,`${state} colors ${width}`);
+      assert(!styles.overflow && await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),`${state} overflow ${width}`);
+      assert(await card.locator('svg[aria-hidden="true"]').count()===icon,`${state} warning icon ${width}`);
+      assert(await card.getByText(/Tespit edilememesi yokluk garantisi değildir/).isVisible(),`${state} caveat ${width}`);
+    }
+  };
+  await checkStatus('declared','rgb(255, 240, 238)','rgb(139, 41, 37)',1);
+  assert(await results.getByText('Bu beyan AI üretiminin kesin kanıtı veya doğrulanmış imza sonucu değildir.',{exact:true}).isVisible(),'Declaration caution missing');
   assert(await results.getByRole('heading',{name:'AI üretim beyanı bulundu',exact:true}).count()===1,'AI declaration missing');
   await results.getByRole('button',{name:'Expand all',exact:true}).click();
   assert(await results.getByText('Fixture Generator <script>not executable</script>',{exact:true}).isVisible(),'Generator missing');
@@ -52,9 +68,19 @@ async (page) => {
     }),`Long value readability/selection ${width}`);
   }
   await upload(false);
+  await checkStatus('uncertain','rgb(255, 246, 229)','rgb(128, 80, 15)',1);
   assert(await results.getByRole('heading',{name:'Provenance bulundu, AI durumu belirsiz',exact:true}).count()===1,'Non AI provenance mislabeled');
   await upload(true,true);
   assert(await results.getByRole('heading',{name:'Provenance bulundu, AI durumu belirsiz',exact:true}).count()===1,'Malformed provenance mislabeled');
   assert(await results.getByText(/Çözümlenemedi\. Desteklenmeyen/).count()===1,'Unreadable missing');
-  return {syntheticC2pa:'passed',fragmented:'passed',aiStates:'passed',unverified:'passed',malformed:'passed',html:'escaped',viewports:[320,390,768,1320],realGemini:'NOT TESTED'};
+  await page.evaluate(async () => {
+    const canvas=document.createElement('canvas');canvas.width=80;canvas.height=60;
+    const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/jpeg'));
+    const dt=new DataTransfer();dt.items.add(new File([blob],'neutral-fixture.jpg',{type:'image/jpeg'}));
+    const input=document.querySelector('#media');input.files=dt.files;input.dispatchEvent(new Event('change',{bubbles:true}));
+  });
+  await page.getByText('Metadata taraması tamamlandı',{exact:true}).waitFor();
+  assert(await results.getByRole('heading',{name:'AI üretim beyanı bulunamadı',exact:true}).count()===1,'Neutral state missing');
+  await checkStatus('neutral','rgb(244, 246, 240)','rgb(32, 62, 56)',0);
+  return {statusCard:'red / amber / neutral passed',syntheticC2pa:'passed',fragmented:'passed',aiStates:'passed',unverified:'passed',malformed:'passed',html:'escaped',viewports:[320,390,768,1320],realGemini:'NOT TESTED'};
 }
