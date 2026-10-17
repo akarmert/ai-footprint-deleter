@@ -17,7 +17,7 @@ async (page) => {
   };
   await upload('trainedAlgorithmicMedia; Applied SynthID watermark; prompt: landscape');
   const results = page.locator('.metadata-results');
-  assert(await results.getByRole('heading', { name: 'AI Footprints Found', exact: true }).count() === 1, 'AI claim status missing');
+  assert(await results.getByRole('heading', { name: 'AI üretim beyanı bulunamadı', exact: true }).count() === 1, 'AI claim status missing');
   assert(await results.locator('.result-counts strong').nth(1).innerText() === '1', 'AI count incorrect');
   await results.getByRole('button', { name: 'Expand all', exact: true }).click();
   assert(await results.locator('.result-section:not([open])').count() === 0, 'Expand all failed');
@@ -34,7 +34,7 @@ async (page) => {
     assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `Overflow at ${width}`);
   }
   await upload('camera note: ordinary photograph');
-  assert(await results.getByRole('heading', { name: 'No AI traces found', exact: true }).count() === 1, 'No AI status missing');
+  assert(await results.getByRole('heading', { name: 'AI üretim beyanı bulunamadı', exact: true }).count() === 1, 'No AI status missing');
   assert(await results.locator('.result-counts strong').nth(1).innerText() === '0', 'Non AI count incorrect');
   await upload('c2pa opaque claim', true);
   assert(await results.getByText(/Content authenticity present but unverified/).count() === 1, 'Unverified provenance missing');

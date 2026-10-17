@@ -8,7 +8,7 @@
     "dev": "vite --host 0.0.0.0",
     "build": "tsc --noEmit && vite build",
     "start": "node server.mjs",
-    "test": "node --test src/results.test.ts src/media.test.ts src/output.test.ts src/engine.test.ts src/engine-extra.test.ts src/video.test.ts src/video-worker.test.ts server.test.mjs"
+    "test": "node --test src/cbor.test.ts src/c2pa.test.ts src/results.test.ts src/media.test.ts src/output.test.ts src/engine.test.ts src/engine-extra.test.ts src/video.test.ts src/video-worker.test.ts server.test.mjs"
   },
   "dependencies": { "react": "^19.2.0", "react-dom": "^19.2.0" },
   "devDependencies": { "@types/react": "^19.2.0", "@types/react-dom": "^19.2.0", "typescript": "^5.9.3", "vite": "^7.1.9" }

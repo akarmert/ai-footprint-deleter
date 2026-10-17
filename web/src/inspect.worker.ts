@@ -1,5 +1,6 @@
 import { scanImage, cleanImage } from './engine';
 import { IMAGE_LIMIT, validateSelection } from './media';
+import { readC2pa } from './c2pa';
 import type { Request, Response } from './protocol';
 const scope = self as unknown as { onmessage: ((event: MessageEvent<Request>) => void) | null; postMessage: (result: Response) => void };
 let source: Uint8Array | undefined;
@@ -16,7 +17,8 @@ scope.onmessage = async ({ data }) => {
       source = new Uint8Array(await data.file.arrayBuffer());
       const scan = scanImage(source);
       if (scan.format !== format) throw new Error('Dosya uzantısı ve kapsayıcı formatı uyuşmuyor.');
-      scope.postMessage({ type: 'scan', scan });
+      const provenance = readC2pa(source, scan.format, scan.c2pa !== 'not-detected-not-guaranteed');
+      scope.postMessage({ type: 'scan', scan: { ...scan, provenance } });
     } else if (data.type === 'clean') {
       if (!source) throw new Error('Önce görseli yeniden tarayın.');
       if (data.mode !== 'safe' && data.mode !== 'comprehensive') throw new Error('Geçersiz temizleme modu.');
