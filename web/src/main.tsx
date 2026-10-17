@@ -4,6 +4,7 @@ import { validateSelection } from './media';
 import { isRemovable, type CleaningMode } from './engine';
 import type { MediaScan, Response, VerifiedOutput, VideoResponse } from './protocol';
 import { chooseOutput, chooseTemporaryDirectory, supportsDiskOutput } from './output';
+import { MetadataResults } from './MetadataResults';
 import './style.css';
 
 function App() {
@@ -192,6 +193,7 @@ function App() {
           <div className="file-details"><h3>Seçili dosya</h3>{file ? <dl><div><dt>Ad</dt><dd className="filename">{file.name}</dd></div><div><dt>Format</dt><dd>{scan?.format ?? 'Doğrulanmadı'}</dd></div><div><dt>Boyut</dt><dd>{file.size.toLocaleString('tr-TR')} bayt</dd></div></dl> : <p className="muted">Henüz dosya seçilmedi.</p>}</div>
           <p className="privacy-note">Orijinal dosyanız korunur. Yeniden kodlama yapılmaz; medya sunucuya gönderilmez.</p>
         </section>
+        {scan && file && <MetadataResults key={`${file.name}:${file.lastModified}:${file.size}`} scan={scan} file={file} />}
         <section className="panel inspection-panel" aria-labelledby="inspection-title"><div className="panel-heading"><h2 id="inspection-title">02 <span>Metadata ve işlem</span></h2></div>
           <div className="status" role="status" aria-live="polite"><span className={`status-dot ${busy ? 'busy' : ''}`}/><div><strong>{committing ? 'Dosya yayınlanıyor · İptal edilemez' : busy === 'scan' ? 'Metadata taranıyor…' : busy === 'clean' ? 'Temizleniyor ve doğrulanıyor…' : videoDone ? 'Doğrulandı · Diske kaydedildi' : output ? 'Temizlendi · Çıktı doğrulandı' : scan ? 'Metadata taraması tamamlandı' : error ? 'İşlem tamamlanamadı' : 'Dosya bekleniyor'}</strong><p>Medya ve metadata hiçbir sunucuya gönderilmez.</p></div></div>
             {error && <div className="error" role="alert">{error}</div>}
