@@ -9,7 +9,7 @@ import { Header, Hero, HomeInformation, Footer } from './components/Home';
 import { ConsentDialog, C2paConsentDialog } from './components/ConsentDialog';
 import type { FootprintResult } from './footprints';
 import { Atmosphere } from './components/Atmosphere';
-import { FileDropzone, FileDetails, CleaningModeSelector, ScanStatus, ScanSummary, VerificationResult, FootprintSummary, footprintStatuses, footprintReason } from './components/Workspace';
+import { FileDropzone, FileDetails, CleaningModeSelector, ScanStatus, ScanSummary, VerificationResult, FootprintSummary, FootprintDetails, footprintStatuses, footprintReason } from './components/Workspace';
 import './style.css';
 
 function App() {
@@ -69,6 +69,44 @@ function App() {
   const cancelling = useRef(false);
   const committingRef = useRef(false);
   const generation = useRef(0);
+  const resultTarget = useRef<HTMLElement>(null);
+  const pendingResultScroll = useRef<{ version: number; interrupted: boolean } | undefined>(undefined);
+  useEffect(() => {
+    const interrupt = () => { if (pendingResultScroll.current) pendingResultScroll.current.interrupted = true; };
+    const keyScroll = (event: KeyboardEvent) => {
+      if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].includes(event.key) && !(event.target instanceof HTMLInputElement)) interrupt();
+    };
+    window.addEventListener('scroll', interrupt, { passive: true });
+    window.addEventListener('wheel', interrupt, { passive: true });
+    window.addEventListener('touchmove', interrupt, { passive: true });
+    window.addEventListener('keydown', keyScroll);
+    return () => {
+      window.removeEventListener('scroll', interrupt);
+      window.removeEventListener('wheel', interrupt);
+      window.removeEventListener('touchmove', interrupt);
+      window.removeEventListener('keydown', keyScroll);
+    };
+  }, []);
+  useEffect(() => {
+    if (busy || !scan && !error) return;
+    const pending = pendingResultScroll.current;
+    if (!pending) return;
+    const frame = requestAnimationFrame(() => {
+      if (pendingResultScroll.current !== pending || pending.version !== generation.current) return;
+      pendingResultScroll.current = undefined;
+      const target = resultTarget.current;
+      if (pending.interrupted || !target) return;
+      const header = document.querySelector('.site-header');
+      const headerStyle = header && getComputedStyle(header);
+      const inset = header && (headerStyle?.position === 'sticky' || headerStyle?.position === 'fixed') ? Math.max(0, header.getBoundingClientRect().bottom) + 24 : 24;
+      target.style.scrollMarginTop = `${inset}px`;
+      const box = target.getBoundingClientRect();
+      const visibleHeight = Math.min(box.height, window.innerHeight - inset - 24);
+      if (box.top >= inset && box.top + visibleHeight <= window.innerHeight - 24) return;
+      target.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth', block: 'start' });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [scan, busy, error]);
   function stop() {
     if (worker.current) {
       if (videoWorker.current) worker.current.postMessage({ type: 'cancel' });
@@ -77,7 +115,7 @@ function App() {
     worker.current = null; clearTimeout(timer.current);
   }
   useEffect(() => () => { stop(); revoke(); }, []);
-  function clear() { if (committingRef.current) return; cancelling.current = false; generation.current++; setVideoDone(false); setSaving(false); setUncertainCommit(false); stop(); revoke(); setFile(undefined); setTemporaryDirectory(undefined); setScan(undefined); setOutput(undefined);  confirmation.current?.close(); c2paConfirmation.current?.close(); operation.current = undefined; setPendingConsent(false); setPendingC2paConsent(false); setFootprintResult(undefined); setBusy(''); setError(''); if (input.current) input.current.value = ''; }
+  function clear() { if (committingRef.current) return; cancelling.current = false; generation.current++; pendingResultScroll.current = undefined; setVideoDone(false); setSaving(false); setUncertainCommit(false); stop(); revoke(); setFile(undefined); setTemporaryDirectory(undefined); setScan(undefined); setOutput(undefined);  confirmation.current?.close(); c2paConfirmation.current?.close(); operation.current = undefined; setPendingConsent(false); setPendingC2paConsent(false); setFootprintResult(undefined); setBusy(''); setError(''); if (input.current) input.current.value = ''; }
   function cancel() {
     if (committingRef.current) return;
     if (videoWorker.current && worker.current && busy) {
@@ -118,6 +156,7 @@ function App() {
       const video = format === 'MP4' || format === 'MOV';
       videoWorker.current = video;
       if (!supported) throw new Error('Web Workers desteklenmiyor. Güncel bir tarayıcı kullanın.');
+      pendingResultScroll.current = { version: generation.current, interrupted: false };
       setFile(source); setBusy('scan');
       const active = video
         ? new Worker(new URL('./video.worker.ts', import.meta.url), { type: 'module' })
@@ -245,18 +284,19 @@ function App() {
         {!supported && <p className="error" role="alert">Web Workers desteklenmiyor. Güncel bir tarayıcı kullan.</p>}
         {file && <FileDetails file={file} scan={scan} />}
         {(file || error) && <>
-        <section className="panel inspection-panel" aria-labelledby="inspection-title"><div className="panel-heading"><h2 id="inspection-title">{videoWorker.current ? 'Video · Gelişmiş Araçlar' : 'AI Ayak İzi'}</h2></div>
-          <ScanStatus busy={busy} committing={committing} done={videoDone} output={output} scan={scan} error={error} footprintResult={footprintResult} />
+        <section ref={resultTarget} id="footprint-result" className="panel inspection-panel" aria-labelledby="inspection-title"><div className="panel-heading"><h2 id="inspection-title">{videoWorker.current ? 'Video · Gelişmiş Araçlar' : 'Analiz sonucu'}</h2></div>
+          {(videoWorker.current || !!busy || !!error) && <ScanStatus busy={busy} committing={committing} done={videoDone} output={output} scan={scan} error={error} footprintResult={footprintResult} />}
             {error && <div className="error" role="alert">{error}</div>}
             {uncertainCommit && <button onClick={() => {
               worker.current?.terminate(); worker.current = null;
               committingRef.current = false; setCommitting(false); clear();
               setError('Disk sonucu belirsiz olarak izleme bırakıldı; bu iptal/geri alma garantisi değildir. Hedefi kontrol edin ve geçici site verilerini temizleyin.');
             }}>Belirsiz sonucu kabul et ve seçimi sıfırla</button>}
-          {!videoWorker.current && file && <>{output && !displayedImageScan ? <section className="footprint-summary"><h3 id="footprint-title">Gelişmiş işlem çıktısı doğrulandı</h3><p>Çıktı metadata kayıtları ve bütünlük açısından yeniden tarandı. Bu gelişmiş işlem için yeni AI kaynak analizi sonucu üretilmedi; tüm AI izlerinin kaldırıldığı söylenemez.</p></section> : <FootprintSummary report={output ? displayedImageScan?.footprints : imageScan?.footprints} plan={output ? displayedImageScan?.footprintPlan : footprintPlan} result={footprintResult} />}<div className="actions"><button className="primary" id="remove-footprints" onClick={requestFootprints} disabled={!directRemovable || !!busy || saving || committing || confirming || !!output || !!footprintResult}>Remove AI Footprint</button></div><p className="scan-note">Remove, desteklenen gömülü C2PA kaynak kayıtlarını ve güvenle ayrılabilen AI metadata'sını kaldırır. Kaynak dosya korunur.</p><p className="scan-note">Ayrı hak/telif izni gerektiren bağımsız metadata kayıtları korunur. Bu kayıtlar için Teknik Ayrıntılar ve Gelişmiş Araçlar bölümündeki onaylı metadata temizliğini kullanabilirsin.</p></>}
+          {!videoWorker.current && file && <>{output && !displayedImageScan ? <section className="footprint-summary"><h3 id="footprint-title">Gelişmiş işlem çıktısı doğrulandı</h3><p>Çıktı metadata kayıtları ve bütünlük açısından yeniden tarandı. Bu gelişmiş işlem için yeni AI kaynak analizi sonucu üretilmedi; tüm AI izlerinin kaldırıldığı söylenemez.</p></section> : <FootprintSummary report={output ? displayedImageScan?.footprints : imageScan?.footprints} plan={output ? displayedImageScan?.footprintPlan : footprintPlan} result={footprintResult} scanning={busy === 'scan'} failed={!!error && !scan || (output ? displayedImageScan : imageScan)?.c2paDecision?.code === 'BLOCKED_MALFORMED_METADATA'} />}<div className="actions"><button className="primary" id="remove-footprints" onClick={requestFootprints} disabled={!directRemovable || !!busy || saving || committing || confirming || !!output || !!footprintResult}>Remove AI Footprint</button></div><p className="scan-note">Yalnız desteklenen metadata kapsanır; piksel ve görünmez filigran analizi yapılmaz. Kaynak dosya korunur.</p></>}
           {output?.footprintResult && <VerificationResult output={output} videoDone={false} videoRemoved={0} total={scan?.records.length ?? 0} download={download} />}
           <div className="actions"><button className="text-button" disabled={committing || confirming || cancelling.current && !!busy || !file && !error} onClick={busy ? cancel : clear}>{busy ? 'İptal et' : 'Seçimi kaldır'}</button></div>
           {scan && <details className="metadata" id="advanced-tools" key={generation.current} open={videoWorker.current}><summary>{videoWorker.current ? 'Gelişmiş Araçlar · Video metadata' : 'Teknik Ayrıntılar ve Gelişmiş Araçlar'}</summary>
+          {!videoWorker.current && <><FootprintDetails report={displayedImageScan?.footprints} plan={output ? displayedImageScan?.footprintPlan : footprintPlan} />{!busy && !error && <ScanStatus busy={busy} committing={committing} done={videoDone} output={output} scan={scan} error={error} footprintResult={footprintResult} />}</>}
           {footprintResult && <section aria-label="AI ayak izi işlem ayrıntıları"><h3>İşlem sonucu ve kalan kayıtlar</h3><p>{footprintStatuses[footprintResult.status]} · {footprintReason(footprintResult)}</p>{(footprintResult.after ?? footprintResult.before).evidence.map((item, index) => <article className="record" key={index}><strong>{item.category === 'explicit-ai' ? 'AI beyanı · Doğrulanmamış' : item.category === 'metadata-hint' ? 'Metadata ipucu' : 'Kaynak geçmişi'}</strong><pre>{item.source}</pre></article>)}</section>}
            {!output?.footprintResult && <VerificationResult output={output} videoDone={videoDone} videoRemoved={videoRemoved} total={scan?.records.length ?? 0} download={download} />}
            <h3>{output ? 'Çıktıda kalan metadata kayıtları' : 'Kaynak dosyanın metadata kayıtları'}</h3>

@@ -10,7 +10,14 @@ async (page) => {
     // Synthetic fixtures test container handling, not signatures or producer compatibility.
     // Capture the real Worker boundary; only delay and failure cases replace its behavior.
     await page.addInitScript(() => {
+      const nativeScroll = Element.prototype.scrollIntoView;
+      window.__testScrolls = [];
+      Element.prototype.scrollIntoView = function(options) {
+        if (this.id === 'footprint-result') window.__testScrolls.push(options);
+        return nativeScroll.call(this, options);
+      };
       const NativeWorker = window.Worker;
+      window.__testScanMode = '';
       window.__testWorkerMode = '';
       window.__testCleanRequests = [];
       window.__testResults = [];
@@ -24,6 +31,7 @@ async (page) => {
           });
         }
         postMessage(message, ...rest) {
+          if (message.type === 'scan' && window.__testScanMode === 'delay') return setTimeout(() => super.postMessage(message, ...rest), 600);
           if (message.type !== 'clean-footprints') return super.postMessage(message, ...rest);
           window.__testCleanRequests.push({ type: message.type, c2paConsent: message.c2paConsent, rightsConsent: message.rightsConsent });
           if (window.__testWorkerMode === 'delay') return setTimeout(() => super.postMessage(message, ...rest), 600);
@@ -45,13 +53,16 @@ async (page) => {
       assert(await page.locator('dialog[open]').count() === 0, 'Direct action opened a dialog');
       assert(await page.locator('input[type=checkbox]').count() === 0, 'Direct flow contains a consent checkbox');
     };
-    const upload = async (kind = 'combined', format = 'jpeg') => {
+    const upload = async (kind = 'combined', format = 'jpeg', wait = true) => {
       await page.evaluate(async ({ kind, format }) => {
         const e = s => new TextEncoder().encode(s);
         const join = (...parts) => { const a = new Uint8Array(parts.reduce((n, p) => n + p.length, 0)); let o = 0; for (const p of parts) { a.set(p, o); o += p.length; } return a; };
         const box = (t, p) => { const a = new Uint8Array(p.length + 8); new DataView(a.buffer).setUint32(0, a.length); a.set(e(t), 4); a.set(p, 8); return a; };
         const sb = (t, l, p) => box('jumb', join(box('jumd', join(e(t), new Uint8Array([0, 17, 0, 16, 128, 0, 0, 170, 0, 56, 155, 113, 3]), e(l + '\0'))), p));
-        const store = sb('c2pa', 'c2pa', sb('c2ma', 'manifest', sb('c2cl', 'c2pa.claim', box('cbor', new Uint8Array([0xa0])))));
+        const cb = value => { const h = (m, n) => n < 24 ? new Uint8Array([m * 32 + n]) : new Uint8Array([m * 32 + 24, n]); if (typeof value === 'string') { const b = e(value); return join(h(3, b.length), b); } if (Array.isArray(value)) return join(h(4, value.length), ...value.map(cb)); const entries = Object.entries(value); return join(h(5, entries.length), ...entries.flatMap(([k, v]) => [cb(k), cb(v)])); };
+        const store = sb('c2pa', 'c2pa', sb('c2ma', 'manifest', join(
+          ...(kind === 'ai' ? [sb('c2as', 'c2pa.assertions', sb('cbor', 'c2pa.actions.v2', box('cbor', cb({ actions: [{ action: 'c2pa.created', digitalSourceType: 'http://cv.iptc.org/newscodes/digitalsourcetype/trainedAlgorithmicMedia' }] }))))] : []),
+          sb('c2cl', 'c2pa.claim', box('cbor', new Uint8Array([0xa0]))))));
         const canvas = document.createElement('canvas'); canvas.width = 80; canvas.height = 60;
         const blob = await new Promise(resolve => canvas.toBlob(resolve, `image/${format}`));
         if (!blob || blob.type !== `image/${format}`) throw new Error(`Canvas cannot encode ${format}`);
@@ -59,13 +70,14 @@ async (page) => {
         if (format === 'jpeg') {
           // Reuse the original JPEG APP11 synthetic JUMBF and APP1 XMP generator.
           const segment = (marker, p) => { data = join(data.subarray(0, 2), new Uint8Array([255, marker, (p.length + 2) >> 8, (p.length + 2) & 255]), p, data.subarray(2)); };
-          if (['combined', 'c2pa', 'external', 'malformed'].includes(kind)) segment(235, join(new Uint8Array([74, 80, 0, 1, 0, 0, 0, 1]), kind === 'malformed' ? store.subarray(0, 13) : store));
+          if (['combined', 'c2pa', 'ai', 'external', 'malformed'].includes(kind)) segment(235, join(new Uint8Array([74, 80, 0, 1, 0, 0, 0, 1]), kind === 'malformed' ? store.subarray(0, 13) : store));
           if (['combined', 'external'].includes(kind)) {
             const target = kind === 'external' ? 'https://example.invalid/manifest' : 'self#jumbf=/c2pa/manifest/c2pa.claim';
             segment(225, e('http://ns.adobe.com/xap/1.0/\0<r:RDF xmlns:r="http://www.w3.org/1999/02/22-rdf-syntax-ns#"><r:Description xmlns:d="http://purl.org/dc/terms/" xmlns:t="urn:unrelated" t:rights="Copyright retained" d:provenance="' + target + '"/></r:RDF>'));
           }
           if (['combined', 'rights'].includes(kind)) segment(254, e('AI parameters: ComfyUI prompt: synthetic test only'));
           if (kind === 'hint') segment(254, e('Copyright Alice. ComfyUI mentioned in an article.'));
+          if (kind === 'incomplete') segment(254, new Uint8Array([255, 254, 253]));
         } else if (format === 'png') {
           const crc32 = bytes => {
             let crc = 0xffffffff;
@@ -88,6 +100,7 @@ async (page) => {
         const dt = new DataTransfer(); dt.items.add(new File([data], `synthetic-${kind}.${extension}`, { type: `image/${format}` }));
         const input = document.querySelector('#media'); input.files = dt.files; input.dispatchEvent(new Event('change', { bubbles: true }));
       }, { kind, format });
+      if (!wait) return;
       await page.locator('#footprint-title').waitFor();
       await page.waitForFunction(() => !document.querySelector('.status-dot.busy'));
       assert(!await page.locator('#advanced-tools').evaluate(element => element.open), 'Advanced tools initially expanded');
@@ -116,6 +129,54 @@ async (page) => {
       assert(downloads.length === before + 1, 'Download click did not produce exactly one download');
     };
 
+    // Scan timing remains the real Worker boundary; synthetic bytes exercise actual parsing.
+    const resetScroll = async () => {
+      await page.evaluate(() => window.scrollTo({ top: 0, behavior: 'instant' }));
+      await page.waitForTimeout(100);
+      await page.evaluate(() => { window.__testScrolls = []; });
+    };
+    const scrollCount = () => page.evaluate(() => window.__testScrolls.length);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await resetScroll();
+    await page.evaluate(() => { window.__testScanMode = 'delay'; });
+    await upload('ai', 'jpeg', false);
+    assert(await page.locator('#footprint-title').textContent() === 'Metadata analiz ediliyor…', 'Pending scan looks complete');
+    await page.getByRole('heading', { name: 'AI METADATA BULUNDU', exact: true }).waitFor();
+    await page.waitForTimeout(100);
+    assert(await scrollCount() === 1, 'Completed scan must scroll exactly once');
+    assert(await page.evaluate(() => window.__testScrolls[0].behavior) === 'instant', 'Reduced motion animates');
+    const geometry = await page.locator('#footprint-result').boundingBox();
+    assert(geometry.y >= 20 && geometry.y + Math.min(geometry.height, 700) <= 844, `Result is not aligned below header clearance: ${JSON.stringify(geometry)}`);
+    assert(await page.locator('#footprint-title').evaluate(el => parseFloat(getComputedStyle(el).fontSize)) >= 26, 'Result heading is not prominent');
+    assert(await page.locator('.footprint-summary').getAttribute('aria-live') === 'polite', 'Result announcement missing');
+    await remove.focus(); assert(await remove.evaluate(el => el === document.activeElement), 'Keyboard focus unavailable');
+    await page.locator('#advanced-tools > summary').click();
+    await page.waitForTimeout(100); assert(await scrollCount() === 1, 'Details repeated result scroll');
+    await remove.click(); await download.waitFor();
+    await download.click(); await page.waitForTimeout(100);
+    assert(await scrollCount() === 1, 'Remove or Download repeated result scroll');
+    await resetScroll();
+    await upload('ai', 'jpeg', false);
+    await page.mouse.wheel(0, 200);
+    await page.waitForTimeout(800);
+    assert(await scrollCount() === 0, 'Manual scrolling was overridden');
+    await resetScroll();
+    await upload('ai', 'jpeg', false);
+    await page.evaluate(() => { window.__testScanMode = ''; });
+    await upload('none');
+    await page.waitForTimeout(850);
+    assert(await page.locator('#footprint-title').textContent() === 'AI METADATA BULUNAMADI', 'Stale AI scan replaced current file');
+    assert(await scrollCount() === 1, 'Stale scan repeated scrolling');
+    // Re-select while already at the result: no unnecessary scroll.
+    await page.evaluate(() => { window.__testScrolls = []; });
+    await upload('none'); await page.waitForTimeout(100);
+    assert(await scrollCount() === 0, 'Visible result scrolled unnecessarily');
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
+    await resetScroll(); await upload('c2pa'); await page.waitForTimeout(700);
+    assert(await page.locator('#footprint-title').textContent() === 'DİJİTAL KAYNAK KAYDI BULUNDU', 'C2PA mislabeled as AI');
+    assert(await page.evaluate(() => window.__testScrolls[0]?.behavior) === 'smooth', 'Normal motion is not smooth');
+    await page.evaluate(() => { window.__testCleanRequests = []; });
     const formats = [];
     for (const format of ['jpeg', 'png', 'webp']) {
       await upload('c2pa', format);
@@ -152,8 +213,11 @@ async (page) => {
     }
     await upload('none'); assert(await remove.isDisabled(), 'No-record removal enabled');
     await upload('hint'); assert(await remove.isDisabled(), 'Mixed hint removal enabled');
-    assert(await page.locator('#footprint-title').textContent() === 'AI ile ilişkili metadata ipuçları bulundu', 'Hint heading replaced by unsupported warning');
+    assert(await page.locator('#footprint-title').textContent() === 'AI METADATA İPUCU BULUNDU', 'Hint heading replaced by unsupported warning');
+    await upload('incomplete');
+    assert(await page.locator('#footprint-title').textContent() === 'METADATA ANALİZİ TAMAMLANAMADI', 'Incomplete scan shown as absence');
     await upload('rights'); assert(await remove.isDisabled(), 'Rights-only dedicated metadata enabled direct removal');
+    await page.locator('#advanced-tools > summary').click();
     assert(await page.getByText(/Bu kayıtlar için Teknik Ayrıntılar ve Gelişmiş Araçlar/).isVisible(), 'Rights-only preservation guidance missing');
     await page.evaluate(() => {
       const dt = new DataTransfer(); dt.items.add(new File(['not a png'], 'invalid.png', { type: 'image/png' }));
@@ -164,6 +228,7 @@ async (page) => {
     for (const kind of ['external', 'malformed']) {
       await upload(kind);
       assert(await remove.isDisabled(), `${kind} provenance not blocked`);
+      if (kind === 'malformed') assert(await page.locator('#footprint-title').textContent() === 'METADATA ANALİZİ TAMAMLANAMADI', 'Unreadable provenance lost incomplete warning');
       assert(await page.locator('.status strong').textContent() === 'Kaynak kaydı bulundu · Kaldırma desteklenmiyor', `${kind} unsupported status missing`);
       assert(await page.locator('.status').evaluate(element => element.classList.contains('has-warning')), `${kind} scan shown as green`);
       const count = await page.evaluate(() => window.__testCleanRequests.length);

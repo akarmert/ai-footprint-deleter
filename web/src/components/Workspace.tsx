@@ -16,20 +16,26 @@ export function footprintReason(result: FootprintResult) {
   return reasons[result.reason] ?? (result.status === 'VERIFICATION_FAILED' ? 'İşlem doğrulanamadığı için çıktı sunulmadı.' : footprintStatuses[result.status]);
 }
 
-export function FootprintSummary({ report, plan, result }: { report?: FootprintReport; plan?: FootprintPlan; result?: FootprintResult }) {
+export function FootprintSummary({ report, plan, result, scanning, failed }: { report?: FootprintReport; plan?: FootprintPlan; result?: FootprintResult; scanning?: boolean; failed?: boolean }) {
   const current = result?.after ?? report;
-  const headings = { AI_DECLARATION: 'AI üretimine ilişkin kayıt bulundu', METADATA_HINTS: 'AI ile ilişkili metadata ipuçları bulundu', PROVENANCE_ONLY: 'Dijital kaynak kaydı bulundu', NO_RECORDS: 'İncelenen alanlarda AI kaynak kaydı bulunamadı', INCOMPLETE: result?.after ? 'Korunan metadata tam incelenemedi' : 'Bazı metadata alanları tam incelenemedi' };
-  return <section className="footprint-summary" aria-labelledby="footprint-title" aria-live="polite">
-    <h3 id="footprint-title">{result ? footprintStatuses[result.status] : current ? headings[current.state] : 'AI kaynak kayıtları inceleniyor…'}</h3>
-    {!result && plan && (plan.blocked || !plan.removeC2pa && !plan.metadataIds.length && !!current?.evidence.length) && <p className="warning">Bulunan kayıtlar güvenle kaldırılamıyor; kaynak dosyada korunur.</p>}
-    {result && current && current.state !== 'INCOMPLETE' && <p>{headings[current.state]}</p>}
-    {current?.state === 'AI_DECLARATION' && <p>Desteklenen C2PA ve metadata kayıtları incelendi.</p>}
-    {!result && plan?.reasons.map(reason => <p key={reason} className="scan-note">{['Karma veya desteklenmeyen metadata alanları korunacak.', 'Bazı metadata alanları tam incelenemedi; yokluk garantisi verilemez.', 'Yön bilgisi belirsiz veya XMP içinde korunuyor; tam inceleme garantisi verilemez.'].includes(reason) ? reason : 'Kaynak bilgisi güvenle çözümlenemediği için ilgili kayıtlar korunur.'}</p>)}
-    <p>AI beyanları doğrulanmamıştır; ipuçları AI üretiminin kanıtı değildir. C2PA kaydı tek başına AI üretimi anlamına gelmez.</p>
-    {current && <p>{current.evidence.filter(item => item.category === 'explicit-ai').length} AI beyanı · {current.evidence.filter(item => item.category === 'metadata-hint').length} metadata ipucu · {current.evidence.filter(item => item.category === 'provenance').length} kaynak geçmişi kaydı{result?.after ? ' kaldı' : ''}.</p>}
-    {(current?.incomplete || plan?.blocked || !!plan?.unsupported.length) && <p className="warning">{plan?.blocked ? 'Güvenlik engeli nedeniyle işlem yapılamıyor. ' : ''}{current?.incomplete ? result?.after ? 'Korunan metadata tam incelenemedi. ' : 'Bazı kayıtlar tam incelenemedi. ' : ''}{plan?.unsupported.length ? 'Bazı kayıtlar güvenle kaldırılamıyor ve korunur. ' : ''}Teknik ayrıntılarda kalan kayıtları inceleyebilirsin.</p>}
-    <p className="scan-note">Yalnız incelenebilen üst düzey metadata kapsanır. Piksel, görünmez filigran, iç içe metadata veya harici kayıtlar incelenmez; kayıt bulunmaması tüm AI izlerinin yokluğu garantisi değildir.</p>
+  const state = failed || current?.incomplete && (current.state === 'NO_RECORDS' || current.state === 'PROVENANCE_ONLY' && plan?.blocked) ? 'INCOMPLETE' : current?.state;
+  const headings = { AI_DECLARATION: 'AI METADATA BULUNDU', METADATA_HINTS: 'AI METADATA İPUCU BULUNDU', PROVENANCE_ONLY: 'DİJİTAL KAYNAK KAYDI BULUNDU', NO_RECORDS: 'AI METADATA BULUNAMADI', INCOMPLETE: 'METADATA ANALİZİ TAMAMLANAMADI' };
+  const descriptions = { AI_DECLARATION: 'Metadata içinde açık AI üretim beyanı bulundu; bu beyan doğrulanmamıştır.', METADATA_HINTS: 'Araç veya üretim parametresi ipuçları bulundu; bunlar AI üretiminin kesin kanıtı değildir.', PROVENANCE_ONLY: 'C2PA kaynak kaydı bulundu; bu kayıt tek başına AI üretimi anlamına gelmez.', NO_RECORDS: 'İncelenebilen metadata alanlarında AI kaynak kaydı tespit edilmedi.', INCOMPLETE: 'Bazı metadata alanları okunamadı veya güvenilir biçimde değerlendirilemedi.' };
+  const pending = scanning || !current && !failed;
+  const tone = pending ? 'pending' : result ? 'processed' : state === 'NO_RECORDS' ? 'clear' : 'detected';
+  return <section className={`footprint-summary ${tone}`} aria-labelledby="footprint-title" aria-live="polite" aria-atomic="true" aria-busy={!!scanning}>
+    <h3 id="footprint-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d={tone === 'clear' ? 'm8 12 3 3 5-6' : 'M12 7v6 M12 17h.01'} /></svg><span>{pending ? 'Metadata analiz ediliyor…' : result ? footprintStatuses[result.status] : state ? headings[state] : headings.INCOMPLETE}</span></h3>
+    {!pending && <p>{result ? footprintReason(result) : state ? descriptions[state] : 'Dosya okunamadı; başka bir dosya seçerek tekrar deneyebilirsin.'}</p>}
+    {!pending && current && <ul className="footprint-counts" aria-label={result?.after ? 'Kalan kayıtlar' : 'Bulunan kayıtlar'}>{([['explicit-ai', 'AI beyanı · Doğrulanmamış'], ['metadata-hint', 'metadata ipucu'], ['provenance', 'C2PA kaydı']] as const).map(([category, label]) => {
+      const count = current.evidence.filter(item => item.category === category).length;
+      return count > 0 ? <li key={category}><strong>{count}</strong> {label}{result?.after ? ' kaldı' : ''}</li> : null;
+    })}</ul>}
+    {!pending && !result && (current?.incomplete && state !== 'INCOMPLETE' || plan?.blocked || !!plan?.unsupported.length) && <p className="scan-note">{current?.incomplete ? 'Analiz kısmi. ' : ''}{plan?.blocked ? 'Güvenli kaldırma desteklenmiyor. ' : ''}Korunan kayıtlar teknik ayrıntılarda.</p>}
   </section>;
+}
+
+export function FootprintDetails({ report, plan }: { report?: FootprintReport; plan?: FootprintPlan }) {
+  return <section aria-label="Analiz kapsamı ve sınırları"><h3>Analiz kapsamı ve sınırları</h3><p>AI beyanları doğrulanmamıştır; ipuçları AI üretiminin kanıtı değildir. C2PA kaydı tek başına AI üretimi anlamına gelmez.</p><p>Yalnız incelenebilen üst düzey metadata kapsanır. Piksel, görünmez filigran, iç içe metadata veya harici kayıtlar incelenmez; kayıt bulunmaması tüm AI izlerinin yokluğu garantisi değildir. C2PA imzaları doğrulanmaz.</p>{report?.incomplete && <p>Bazı metadata alanları tam incelenemedi.</p>}{plan?.reasons.map(reason => <p key={reason}>{reason}</p>)}<p>Remove, desteklenen gömülü C2PA kaynak kayıtlarını ve güvenle ayrılabilen AI metadata'sını kaldırır. Kaynak dosya korunur.</p><p>Ayrı hak/telif izni gerektiren bağımsız metadata kayıtları korunur. Bu kayıtlar için Teknik Ayrıntılar ve Gelişmiş Araçlar bölümündeki onaylı metadata temizliğini kullanabilirsin.</p></section>;
 }
 
 export function FileDropzone({ input, dragging, disabled, setDragging, select }: { input: RefObject<HTMLInputElement | null>; dragging: boolean; disabled: boolean; setDragging: (value: boolean) => void; select: (files: FileList | null) => void }) {

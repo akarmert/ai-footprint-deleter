@@ -14,6 +14,16 @@
 .formats { font-size: 12px; letter-spacing: .06em; margin-bottom: 8px; } .limits { display: flex; flex-wrap: wrap; gap: 6px 22px; justify-content: center; font-size: 11px; color: var(--secondary); }
 .privacy-note { display: flex; align-items: center; justify-content: center; gap: 8px; margin: 18px 0 0; padding-top: 16px; border-top: 1px solid var(--border); font-size: 12px; } .privacy-note svg { width: 16px; height: 16px; color: var(--orange); }
 .panel { padding: 28px; border: 1px solid var(--border); border-radius: var(--panel-radius); background: var(--surface); }
+#footprint-result { scroll-margin-top: 24px; min-width: 0; }
+.footprint-summary h3 { display: flex; align-items: flex-start; gap: 12px; font-size: clamp(26px, 3.4vw, 40px); font-weight: 800; line-height: 1.18; letter-spacing: -.025em; margin: 0 0 16px; overflow-wrap: anywhere; }
+.footprint-summary h3 svg { width: 30px; height: 30px; flex: 0 0 30px; margin-top: 4px; }
+.footprint-summary.detected h3 { color: var(--orange); }
+.footprint-summary.clear h3 { color: var(--success); }
+.footprint-summary.pending h3 { color: var(--secondary); }
+.footprint-summary p { max-width: 68ch; }
+.footprint-counts { display: flex; flex-wrap: wrap; gap: 10px 24px; list-style: none; padding: 0; margin: 20px 0 0; font-size: 13px; color: var(--secondary); }
+.footprint-counts strong { color: var(--text); }
+.footprint-summary .scan-note { font-size: 12px; }
 .panel-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 20px; } .panel-heading h2 { font-size: 21px; margin: 0; } .panel-heading h3 { font-size: 19px; margin: 0; } .metadata-results { margin-top: 24px; padding-top: 24px; border-top: 1px solid var(--border); }
 .file-details { display: flex; align-items: center; gap: 18px; } .file-details h2 { font-size: 17px; margin: 0 0 6px; } .file-details p { margin: 0; font-size: 12px; } .file-details .eyebrow { font-size: 10px; margin-bottom: 4px; } .file-details>.chip { margin-left: auto; flex-shrink: 0; } .file-icon { color: var(--secondary); }
 .status { display: flex; gap: 14px; padding: 18px; background: var(--night); border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 20px; } .status strong { font-size: 15px; } .status p { margin: 4px 0 0; font-size: 12px; } .status-dot { width: 8px; height: 8px; margin-top: 8px; border-radius: 50%; background: var(--success); flex-shrink: 0; } .status.has-warning .status-dot { background: var(--orange); } .status-dot.busy { background: var(--focus); animation: pulse 1.5s ease-in-out infinite; }
