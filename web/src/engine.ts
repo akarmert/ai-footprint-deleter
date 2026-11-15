@@ -1,10 +1,17 @@
-import { validateC2paStore } from './c2pa-structure.ts'
+import { validateC2paStore, resolveLocalC2paReference } from './c2pa-structure.ts'
+import { analyzeXmp, removeXmpReference } from './xmp.ts'
+
+export type C2paDecisionCode = 'SUPPORTED_EMBEDDED' | 'SUPPORTED_WITH_LOCAL_XMP_REFERENCE' | 'BLOCKED_EXTERNAL_REFERENCE' | 'BLOCKED_AMBIGUOUS_PROVENANCE' | 'BLOCKED_UNSUPPORTED_STRUCTURE' | 'BLOCKED_MALFORMED_METADATA' | 'NO_EMBEDDED_MANIFEST'
+export type C2paDecision = { code: C2paDecisionCode; reason: string }
+export type ChangedField = { field: string; previousValue: string }
+type XmpPacket = { part: Part; prefix: number; analysis: ReturnType<typeof analyzeXmp> }
+type XmpPatch = { part: Part; payload: Uint8Array; previousValue: string }
 
 export type CleaningMode = 'safe' | 'comprehensive'
 export type MetadataRecord = { id: string; kind: string; bytes: number; preview: string; status: 'cleanable' | 'protected' | 'unsupported'; reason: string; requiresRightsConsent: boolean; comprehensiveOnly?: boolean }
-export type Scan = { format: 'JPEG' | 'PNG' | 'WebP'; width: number; height: number; alpha: boolean; orientation: number | null; records: MetadataRecord[]; c2pa: string; cleaningBlocked: boolean; c2paRemovable?: boolean; notes: string[] }
+export type Scan = { format: 'JPEG' | 'PNG' | 'WebP'; width: number; height: number; alpha: boolean; orientation: number | null; records: MetadataRecord[]; c2pa: string; cleaningBlocked: boolean; c2paRemovable?: boolean; c2paDecision?: C2paDecision; notes: string[] }
 type Part = { start: number; end: number; payload: Uint8Array; kind: string; record?: MetadataRecord; image: boolean }
-type Parsed = { scan: Scan; parts: Part[]; header: number; storeParts: Part[]; otherBlocked: boolean }
+type Parsed = { scan: Scan; parts: Part[]; header: number; storeParts: Part[]; otherBlocked: boolean; xmpPatch?: XmpPatch }
 const MAX = 128 * 1024 * 1024
 const MAX_PARTS = 4096
 const MAX_METADATA = 16 * 1024 * 1024
@@ -108,6 +115,8 @@ function parse(data: Uint8Array): Parsed {
   let metadataBytes = 0
   let otherBlocked = false
   const storeParts: Part[] = []
+  const xmpPackets: XmpPacket[] = []
+  let xmpFailure: C2paDecision | undefined
   const add = (start: number, end: number, p: number, length: number, kind: string, image = false): Part => {
     if (parts.length >= MAX_PARTS) fail('Chunk/segment sayısı sınırı')
     if (length > 64 * 1024 * 1024) fail('Tek chunk 64 MiB sınırı')
@@ -138,6 +147,50 @@ function parse(data: Uint8Array): Parsed {
       record(part, kind, parsed.orientation === 1 ? 'cleanable' : 'protected', parsed.orientation === 1 ? 'TIFF doğrulandı; yön 1' : 'Yön dönüşümü veya bilinmeyen TIFF korunur', parsed.value, parsed.orientation === 1)
       return
     }
+    if (kind === 'PNG text' && ascii(part.payload, 0, part.payload.indexOf(0)) === 'XML:com.adobe.xmp') { metadata(part, 'XMP'); return }
+    if (kind === 'XMP') {
+      let prefix = 0
+      if (part.kind === 'JPEG-e1' || part.kind === 'tEXt') prefix = part.payload.indexOf(0) + 1
+      else if (part.kind === 'iTXt') {
+        const key = part.payload.indexOf(0), lang = part.payload.indexOf(0, key + 3)
+        prefix = part.payload.indexOf(0, lang + 1) + 1
+      }
+      const analysis = analyzeXmp(part.payload.subarray(prefix))
+      xmpPackets.push({ part, prefix, analysis })
+      let validUtf8 = true
+      try { new TextDecoder('utf-8', { fatal: true }).decode(part.payload.subarray(prefix)) } catch { validUtf8 = false }
+      const legacyBlockOnly = validUtf8 && part.payload.length <= MAX_TEXT && analysis.status !== 'valid' && !/[&\0]|<\s*!|<\?xml|orientation|c2pa|jumbf|provenance|contentcredentials|manifest.store/i.test(text(part.payload.subarray(prefix))) && !part.payload.includes(255) && !part.payload.includes(254)
+      if (analysis.status !== 'valid') {
+        // Legacy whole-block removal remains separate from strict field editing.
+        otherBlocked = true; if (!legacyBlockOnly) scan.cleaningBlocked = true
+        xmpFailure = { code: analysis.status === 'malformed' ? 'BLOCKED_MALFORMED_METADATA' : 'BLOCKED_UNSUPPORTED_STRUCTURE', reason: analysis.reason ?? 'XMP güvenle çözümlenemedi' }
+      }
+      if (analysis.references.length) { scan.cleaningBlocked = true; scan.c2pa = 'detected-not-verified' }
+      if (part.payload.length > MAX_TEXT) { otherBlocked = true; scan.cleaningBlocked = true }
+      const value = text(part.payload)
+      // Unrelated provenance hints remain blockers even when a local field is recognized.
+      let remaining = part.payload.subarray(prefix)
+      if (analysis.status === 'valid' && analysis.references.length === 1) remaining = removeXmpReference(remaining, analysis.references[0]!)
+      const remainingAnalysis = analyzeXmp(remaining)
+      const provenancePattern = /c2pa|jumbf|contentcredentials|content.credentials|manifest.store|dcterms\s*:\s*provenance/i
+      const hasHint = (bytes: Uint8Array) => {
+        let tail = ''
+        for (let pos = 0; pos < bytes.length; pos += 65536) {
+          const window = tail + decoder.decode(bytes.subarray(pos, pos + 65536)).replace(/\0/g, '')
+          if (provenancePattern.test(window)) return true
+          tail = window.slice(-128)
+        }
+        return false
+      }
+      const decodedHints = remainingAnalysis.status === 'valid' ? text(remaining).replace(/&#(x[0-9a-f]+|[0-9]+);/gi, (_match, digits: string) => String.fromCodePoint(digits[0]!.toLowerCase() === 'x' ? Number.parseInt(digits.slice(1), 16) : Number(digits))) : ''
+      const hints = hasHint(part.payload.subarray(0, prefix)) || hasHint(remaining) || provenancePattern.test(remainingAnalysis.projection) || provenancePattern.test(decodedHints)
+      const orientationHint = /orientation/i.test(value) || /orientation/i.test(remainingAnalysis.projection) || /orientation/i.test(decodedHints)
+      if (hints) { otherBlocked = true; scan.cleaningBlocked = true; scan.c2pa = 'detected-not-verified' }
+      if (orientationHint) otherBlocked = true
+      const protectedXmp = analysis.status !== 'valid' && !legacyBlockOnly || analysis.references.length > 0 || hints || orientationHint
+      record(part, kind, protectedXmp ? 'protected' : 'cleanable', protectedXmp ? 'XMP kaynak/yön bilgisi veya desteklenmeyen yapı korunur' : 'XMP blok düzeyinde kaldırılabilir', value, !protectedXmp)
+      return
+    }
     let tail = ''
     for (let pos = 0; pos < part.payload.length; pos += 65536) {
       const window = tail + decoder.decode(part.payload.subarray(pos, pos + 65536)).replace(/\0/g, '')
@@ -146,24 +199,7 @@ function parse(data: Uint8Array): Parsed {
     }
     if (kind === 'Compressed PNG text') { otherBlocked = true; scan.cleaningBlocked = true; record(part, kind, 'unsupported', 'Sıkıştırılmış metin/provenans yorumlanamaz; tüm temizlik engellendi'); return }
     const value = text(part.payload)
-    if (kind === 'PNG text' && /XML:com\.adobe\.xmp/i.test(value.slice(0, 80))) { metadata(part, 'XMP'); return }
     if (part.payload.length > MAX_TEXT || (kind === 'PNG text' && /raw profile type/i.test(value.slice(0, 80)))) { otherBlocked = true; scan.cleaningBlocked = true; record(part, kind, 'protected', 'Metin sınırı veya gömülü profil/provenans; tüm temizlik engellendi', value); return }
-    if (kind === 'XMP') {
-      let xml = part.payload
-      if (part.kind === 'JPEG-e1') xml = xml.subarray(xml.indexOf(0) + 1)
-      else if (part.kind === 'tEXt') xml = xml.subarray(xml.indexOf(0) + 1)
-      else if (part.kind === 'iTXt') {
-        const key = xml.indexOf(0), lang = xml.indexOf(0, key + 3), translated = xml.indexOf(0, lang + 1)
-        xml = xml.subarray(translated + 1)
-      }
-      let decoded = '', invalidEncoding = false
-      try { decoded = new TextDecoder('utf-8', { fatal: true }).decode(xml) } catch { invalidEncoding = true }
-      const opaque = invalidEncoding || xml.includes(0) || xml[0] === 0xff || xml[0] === 0xfe || /<\?xml[^>]*encoding\s*=\s*['"](?!utf-8['"])[^'"]+['"]/i.test(decoded) || /&|<\s*!DOCTYPE|<\s*!ENTITY|xmlns\s*:[^\s=]*orientation/i.test(decoded)
-      if (opaque) { otherBlocked = true; scan.cleaningBlocked = true }
-      const protectedXmp = opaque || /orientation/i.test(decoded)
-      record(part, kind, protectedXmp ? 'protected' : 'cleanable', protectedXmp ? 'XMP yön/kodlama/karmaşıklık bilgisi güvenli biçimde yorumlanamaz' : 'XMP blok düzeyinde kaldırılabilir', value, !protectedXmp)
-      return
-    }
     record(part, kind, 'cleanable', 'Blok düzeyinde kaldırılabilir; hak bilgileri içerebilir', value, true)
   }
   let header: number
@@ -370,6 +406,22 @@ function parse(data: Uint8Array): Parsed {
   }
   // Only top-level stores are in scope; nested EXIF/thumbnail metadata is retained.
   scan.c2paRemovable = false
+  let xmpPatch: XmpPatch | undefined
+  const references = xmpPackets.flatMap(packet => packet.analysis.references.map(reference => ({ packet, reference })))
+  scan.c2paDecision = xmpFailure ?? { code: storeParts.length ? 'BLOCKED_UNSUPPORTED_STRUCTURE' : 'NO_EMBEDDED_MANIFEST', reason: storeParts.length ? 'Gömülü manifest yapısı desteklenmiyor' : 'Gömülü manifest bulunamadı' }
+  if (references.length > 1 || references.length && xmpPackets.length !== 1) {
+    otherBlocked = true
+    scan.c2paDecision = { code: 'BLOCKED_AMBIGUOUS_PROVENANCE', reason: 'Birden fazla XMP paketi veya kaynak işaretçisi var' }
+  } else if (references.some(item => !item.reference.value.startsWith('self#jumbf='))) {
+    otherBlocked = true
+    scan.c2paDecision = { code: 'BLOCKED_EXTERNAL_REFERENCE', reason: 'Haricî kaynak işaretçisi otomatik değiştirilmez' }
+  } else if (otherBlocked && !xmpFailure) scan.c2paDecision = { code: 'BLOCKED_AMBIGUOUS_PROVENANCE', reason: 'Başka belirsiz kaynak bilgisi mevcut' }
+  if (!storeParts.length && !references.length && !scan.cleaningBlocked && scan.c2pa === 'not-detected-not-guaranteed') scan.c2paDecision = { code: 'NO_EMBEDDED_MANIFEST', reason: 'Gömülü manifest bulunamadı' }
+  if (references.length === 1 && !storeParts.length && references[0]!.reference.value.startsWith('self#jumbf=')) {
+    otherBlocked = true
+    scan.c2paDecision = { code: 'BLOCKED_AMBIGUOUS_PROVENANCE', reason: 'Yerel işaretçi için gömülü manifest bulunamadı' }
+  }
+  if (storeParts.length && scan.orientation === null && !xmpFailure) scan.c2paDecision = { code: 'BLOCKED_MALFORMED_METADATA', reason: 'EXIF yön bilgisi bozuk veya belirsiz' }
   if (storeParts.length && !otherBlocked && scan.orientation !== null) {
     try {
       let store: Uint8Array
@@ -399,12 +451,24 @@ function parse(data: Uint8Array): Parsed {
         if (scan.format === 'WebP' && index !== parts.length - 1) fail('C2PA must be final')
         store = part.payload
       }
-      validateC2paStore(store)
+      const index = validateC2paStore(store)
+      if (references.length) {
+        const { packet, reference } = references[0]!
+        if (!resolveLocalC2paReference(reference.value, index)) {
+          scan.c2paDecision = { code: 'BLOCKED_AMBIGUOUS_PROVENANCE', reason: 'Yerel işaretçi doğrulanmış manifest/claim yoluyla eşleşmiyor' }
+          fail('XMP target mismatch')
+        }
+        const xml = removeXmpReference(packet.part.payload.subarray(packet.prefix), reference)
+        const payload = new Uint8Array(packet.prefix + xml.length)
+        payload.set(packet.part.payload.subarray(0, packet.prefix)); payload.set(xml, packet.prefix)
+        xmpPatch = { part: packet.part, payload, previousValue: reference.value }
+      }
       scan.c2paRemovable = true
+      scan.c2paDecision = { code: references.length ? 'SUPPORTED_WITH_LOCAL_XMP_REFERENCE' : 'SUPPORTED_EMBEDDED', reason: references.length ? 'Gömülü manifest ve tek yerel XMP işaretçisi birlikte kaldırılabilir' : 'Desteklenen gömülü manifest kaldırılabilir' }
       scan.notes.push('C2PA kaldırma kapsamı yalnız üst düzey manifest store’dur; korunan EXIF, küçük resim ve iç içe metadata kaldırılmış sayılmaz.')
     } catch { /* Unsupported or ambiguous stores remain fail-closed. */ }
   }
-  return { scan, parts, header: header!, storeParts, otherBlocked }
+  return { scan, parts, header: header!, storeParts, otherBlocked, ...(xmpPatch ? { xmpPatch } : {}) }
 }
 export function scanImage(data: Uint8Array): Scan { return parse(data).scan }
 async function payloadHash(parts: Part[]): Promise<string> {
@@ -417,7 +481,26 @@ async function payloadHash(parts: Part[]): Promise<string> {
   const hash = await globalThis.crypto.subtle.digest('SHA-256', joined)
   return Array.from(new Uint8Array(hash), v => v.toString(16).padStart(2, '0')).join('')
 }
-type CleanResult = { mode: CleaningMode; data: Uint8Array; scan: Scan; removed: number; retained: number; payloadHash: string; checks: string[] }
+type CleanResult = { mode: CleaningMode; data: Uint8Array; scan: Scan; removed: number; retained: number; payloadHash: string; checks: string[]; changedFields?: ChangedField[] }
+function patchedXmpBlock(source: Uint8Array, format: Scan['format'], patch: XmpPatch): Uint8Array {
+  const { part, payload } = patch
+  if (format === 'JPEG') {
+    const prefix = part.end - part.start - part.payload.length
+    const out = new Uint8Array(prefix + payload.length)
+    out.set(source.subarray(part.start, part.start + prefix)); out.set(payload, prefix)
+    new DataView(out.buffer).setUint16(prefix - 2, payload.length + 2)
+    return out
+  }
+  if (format === 'PNG') {
+    const out = new Uint8Array(payload.length + 12), view = new DataView(out.buffer)
+    view.setUint32(0, payload.length); out.set(source.subarray(part.start + 4, part.start + 8), 4); out.set(payload, 8)
+    view.setUint32(out.length - 4, crc(out.subarray(4, out.length - 4)))
+    return out
+  }
+  const out = new Uint8Array(8 + payload.length + (payload.length & 1))
+  out.set(source.subarray(part.start, part.start + 4)); new DataView(out.buffer).setUint32(4, payload.length, true); out.set(payload, 8)
+  return out
+}
 function selection(before: Parsed, ids: string[], rightsConsent: boolean, mode: CleaningMode): Set<string> {
   validateMode(mode)
   if (before.scan.cleaningBlocked) fail('C2PA / opaque provenance: tüm temizlik engellendi')
@@ -467,10 +550,12 @@ export async function cleanC2pa(data: Uint8Array, consent: boolean): Promise<Cle
   const source = data.slice(), before = parse(source)
   if (!before.scan.c2paRemovable || before.otherBlocked) fail('C2PA store yapısı veya diğer provenance engelleri kaldırmaya uygun değil')
   const retained = before.parts.filter(p => !before.storeParts.includes(p))
-  const output = new Uint8Array(before.header + retained.reduce((n, p) => n + p.end - p.start, 0))
+  const patched = before.xmpPatch ? patchedXmpBlock(source, before.scan.format, before.xmpPatch) : undefined
+  const expectedBlocks = retained.map(part => part === before.xmpPatch?.part ? patched! : source.subarray(part.start, part.end))
+  const output = new Uint8Array(before.header + expectedBlocks.reduce((n, block) => n + block.length, 0))
   output.set(source.subarray(0, before.header))
   let pos = before.header
-  for (const part of retained) { output.set(source.subarray(part.start, part.end), pos); pos += part.end - part.start }
+  for (const block of expectedBlocks) { output.set(block, pos); pos += block.length }
   if (before.scan.format === 'WebP') new DataView(output.buffer).setUint32(4, output.length - 8, true)
   const after = parse(output)
   if (after.scan.cleaningBlocked || after.scan.c2pa !== 'not-detected-not-guaranteed' || after.storeParts.length || after.scan.records.some(r => r.kind === 'C2PA / opaque provenance')) fail('Çıktıda provenance kaldı')
@@ -478,13 +563,13 @@ export async function cleanC2pa(data: Uint8Array, consent: boolean): Promise<Cle
   for (let i = 0; i < before.header; i++) if (!(before.scan.format === 'WebP' && i >= 4 && i < 8) && source[i] !== output[i]) fail('Başlık değişti')
   retained.forEach((part, i) => {
     const actual = after.parts[i]!
-    if (part.kind !== actual.kind || !equal(source.subarray(part.start, part.end), output.subarray(actual.start, actual.end))) fail('Tutulan blok baytları değişti')
+    if (part.kind !== actual.kind || !equal(expectedBlocks[i]!, output.subarray(actual.start, actual.end))) fail('Tutulan blok baytları değişti')
   })
   for (const key of ['format', 'width', 'height', 'alpha', 'orientation'] as const) if (before.scan[key] !== after.scan[key]) fail(`Görüntü ${key} değişti`)
   if (after.scan.records.length !== before.scan.records.length - before.storeParts.length) fail('Metadata sayısı değişti')
   const originalHash = await payloadHash(before.parts), hash = await payloadHash(after.parts)
   if (originalHash !== hash) fail('Görüntü yükü hash değişti')
-  return { operation: 'c2pa-store-removal', mode: 'safe', data: output, scan: after.scan, removed: before.storeParts.length, retained: after.scan.records.length, payloadHash: hash, checks: ['Single structurally supported top-level C2PA store removed atomically; signatures not verified', 'All retained raw blocks identical; only WebP RIFF size changed', 'Encoded payload SHA-256 and format/dimensions/alpha/orientation identical', 'Output reparsed without detected provenance or cleaning blockers', 'Top-level scope only: retained EXIF, thumbnails and nested metadata are not claimed removed'] }
+  return { operation: 'c2pa-store-removal', changedFields: before.xmpPatch ? [{ field: '{http://purl.org/dc/terms/}provenance', previousValue: preview(before.xmpPatch.previousValue) }] : [], mode: 'safe', data: output, scan: after.scan, removed: before.storeParts.length, retained: after.scan.records.length, payloadHash: hash, checks: ['Single structurally supported top-level C2PA store removed atomically; signatures not verified', before.xmpPatch ? 'Only validated local XMP provenance field removed; unrelated XML semantics and source bytes preserved; container lengths/CRC adjusted' : 'All retained raw blocks identical; only WebP RIFF size changed', 'Encoded payload SHA-256 and format/dimensions/alpha/orientation identical', 'Output reparsed without detected provenance or cleaning blockers', 'Top-level scope only: retained EXIF, thumbnails and nested metadata are not claimed removed'] }
 }
 export async function verifyOutput(data: Uint8Array, output: Uint8Array, ids: string[], rightsConsent: boolean, mode: CleaningMode = 'safe'): Promise<CleanResult> {
   const before = parse(data)

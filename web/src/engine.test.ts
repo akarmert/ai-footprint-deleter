@@ -140,7 +140,7 @@ test('C2PA removal rejects mixed independent blockers regardless of metadata ord
     const data = pngInsert(pngInsert(fixture('palette.png'), kind, payload), 'caBX', c2paStore()); assert.equal(scanImage(data).c2paRemovable, false); await assert.rejects(cleanC2pa(data, true))
   }
 })
-test('JPEG XMP self JUMBF pointer is an independent blocker, not a second APP11 store part', async () => {
+test('malformed unbound XMP self pointer remains blocked, not a second APP11 store part', async () => {
   const original = fixture('progressive.jpg')
   // Literal XMP pointer pattern observed in the official legacy Adobe JPEG; no source media is distributed.
   const xmp = bytes('http://ns.adobe.com/xap/1.0/\0<x:xmpmeta><rdf:RDF><rdf:Description xmlns:dcterms="http://purl.org/dc/terms/" dcterms:provenance="self#jumbf=/c2pa/contentauth:urn:uuid:4d971750-1db4-4492-a87c-5c3e7ed33efc/c2pa.claim"/></rdf:RDF></x:xmpmeta>')
@@ -148,11 +148,83 @@ test('JPEG XMP self JUMBF pointer is an independent blocker, not a second APP11 
   assert.equal(scanImage(supported).c2paRemovable, true)
   for (const data of [jpgInsert(supported, 225, xmp), jpgInsert(jpgInsert(original, 225, xmp), 235, app11(c2paStore()))]) {
     const scan = scanImage(data)
-    assert.equal(scan.records.filter(r => r.kind === 'C2PA / opaque provenance').length, 2)
+    assert.equal(scan.records.filter(r => r.kind === 'C2PA / opaque provenance').length, 1)
+    assert.equal(scan.c2paDecision?.code, 'BLOCKED_MALFORMED_METADATA')
     assert.equal(scan.cleaningBlocked, true); assert.equal(scan.c2paRemovable, false)
     await assert.rejects(cleanC2pa(data, true), /diğer provenance/)
     await assert.rejects(cleanImage(data, [], true), /provenance/)
   }
+})
+function referenceStore(): Uint8Array {
+  const uuid = (type: string) => concat(bytes(type), new Uint8Array([0,17,0,16,128,0,0,170,0,56,155,113]))
+  const sb = (type: string, label: string, content: Uint8Array) => jumbBox('jumb', concat(jumbBox('jumd', concat(uuid(type), new Uint8Array([3]), bytes(label + '\0'))), content))
+  return sb('c2pa', 'c2pa', sb('c2ma', 'manifest', sb('c2cl', 'c2pa.claim', jumbBox('cbor', new Uint8Array([0xa0])))))
+}
+function localXmp(value = 'self#jumbf=/c2pa/manifest/c2pa.claim', extra = ''): Uint8Array {
+  return bytes(`<?xpacket begin="\uFEFF" id="W5M0MpCehiHzreSzNTczkc9d"?><x:xmpmeta xmlns:x="adobe:ns:meta/" x:xmptk="Fixture"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"><rdf:Description rdf:about="" xmlns:p="http://purl.org/dc/terms/" xmlns:dc="http://purl.org/dc/elements/1.1/" dc:rights="A &amp; B — Türkçe" p:provenance="${value}" ${extra}/></rdf:RDF></x:xmpmeta><?xpacket end="w"?>`)
+}
+for (const ext of ['jpg','png','webp']) test(`${ext} local XMP reference removed atomically without unrelated metadata loss`, async () => {
+  const original = fixture(`image-6.${ext}`), xml = localXmp(), store = referenceStore()
+  let data: Uint8Array
+  if (ext === 'jpg') data = jpgInsert(jpgInsert(original, 225, concat(bytes('http://ns.adobe.com/xap/1.0/\0'), xml)), 235, app11(store))
+  else if (ext === 'png') data = pngInsert(pngInsert(original, 'tEXt', concat(bytes('XML:com.adobe.xmp\0'), xml)), 'caBX', store)
+  else { data = webpInsert(webpInsert(original, 'XMP ', xml), 'C2PA', store); data[20]! |= 4 }
+  const copy = data.slice(), scan = scanImage(data)
+  assert.equal(scan.c2paDecision?.code, 'SUPPORTED_WITH_LOCAL_XMP_REFERENCE'); assert.equal(scan.cleaningBlocked, true)
+  await assert.rejects(cleanImage(data, [], true)); await assert.rejects(cleanC2pa(data, false))
+  const result = await cleanC2pa(data, true)
+  assert.deepEqual(data, copy); assert.equal(result.changedFields?.length, 1); assert.equal(result.removed, 1)
+  assert.equal(result.scan.cleaningBlocked, false); assert.equal(result.scan.c2paDecision?.code, 'NO_EMBEDDED_MANIFEST')
+  assert.equal(result.scan.orientation, 6); assert.ok(new TextDecoder().decode(result.data).includes('A &amp; B — Türkçe'))
+  assert.equal(new TextDecoder().decode(result.data).includes('self#jumbf='), false)
+  assert.equal(result.payloadHash, (await cleanImage(original, [], false)).payloadHash)
+})
+test('external, repeated and mismatching XMP references stay blocked with reason codes', async () => {
+  const base = jpgInsert(fixture('progressive.jpg'), 235, app11(referenceStore()))
+  for (const [value, extra, code] of [['https://example.invalid/manifest.c2pa','','BLOCKED_EXTERNAL_REFERENCE'], ['self#jumbf=/c2pa/other','','BLOCKED_AMBIGUOUS_PROVENANCE'], ['self#jumbf=/c2pa/manifest','xmlns:q="http://purl.org/dc/terms/" q:provenance="self#jumbf=/c2pa/manifest"','BLOCKED_MALFORMED_METADATA']]) {
+    const data = jpgInsert(base,225,concat(bytes('http://ns.adobe.com/xap/1.0/\0'),localXmp(value,extra)))
+    assert.equal(scanImage(data).c2paDecision?.code,code); await assert.rejects(cleanC2pa(data,true))
+  }
+})
+test('multiple packets and separate valid provenance properties cannot be partially removed', async () => {
+  const base = jpgInsert(fixture('progressive.jpg'),235,app11(referenceStore()))
+  const packet = concat(bytes('http://ns.adobe.com/xap/1.0/\0'),localXmp())
+  const multiple = jpgInsert(jpgInsert(base,225,packet),225,packet)
+  assert.equal(scanImage(multiple).c2paDecision?.code,'BLOCKED_AMBIGUOUS_PROVENANCE'); await assert.rejects(cleanC2pa(multiple,true))
+  const xml = new TextDecoder().decode(localXmp()).replace('/></rdf:RDF>', '><p:provenance>self#jumbf=/c2pa/manifest</p:provenance></rdf:Description></rdf:RDF>')
+  const repeated = jpgInsert(base,225,concat(bytes('http://ns.adobe.com/xap/1.0/\0'),bytes(xml)))
+  assert.equal(scanImage(repeated).c2paDecision?.code,'BLOCKED_AMBIGUOUS_PROVENANCE'); await assert.rejects(cleanC2pa(repeated,true))
+})
+test('PNG uncompressed iTXt XMP local reference preserves language header and semantic fields', async () => {
+  const header = bytes('XML:com.adobe.xmp\0\0\0en\0Description\0'), xml = localXmp()
+  const data = pngInsert(pngInsert(fixture('palette.png'),'iTXt',concat(header,xml)),'caBX',referenceStore())
+  assert.equal(scanImage(data).c2paRemovable,true)
+  const result = await cleanC2pa(data,true)
+  assert.ok(new TextDecoder().decode(result.data).includes('en\0Description\0'))
+  assert.equal(result.scan.cleaningBlocked,false)
+})
+test('decoded XMP hints and container headers cannot bypass conservative guards', async () => {
+  const wrap = (value: string) => bytes(`<r:RDF xmlns:r="http://www.w3.org/1999/02/22-rdf-syntax-ns#"><r:Description xmlns:d="urn:test" d:value="${value}"/></r:RDF>`)
+  const base = fixture('progressive.jpg')
+  for (const value of ['&#99;2pa','Orien&#116;ation=6']) {
+    const data = jpgInsert(base,225,concat(bytes('http://ns.adobe.com/xap/1.0/\0'),wrap(value)))
+    const scan = scanImage(data); assert.equal(scan.records[0]!.status,'protected')
+    await assert.rejects(cleanImage(data,[scan.records[0]!.id],true))
+    const withStore=jpgInsert(data,235,app11(referenceStore())); assert.equal(scanImage(withStore).c2paRemovable,false)
+  }
+  const ns = bytes('<r:RDF xmlns:r="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:unused="http://&#99;2pa.org/ns"><r:Description/></r:RDF>')
+  assert.equal(scanImage(jpgInsert(base,225,concat(bytes('http://ns.adobe.com/xap/1.0/\0'),ns))).cleaningBlocked,true)
+  const header = pngInsert(fixture('palette.png'),'iTXt',concat(bytes('XML:com.adobe.xmp\0\0\0en\0c2pa\0'),wrap('ok')))
+  assert.equal(scanImage(header).c2pa,'detected-not-verified')
+  const oversized = pngInsert(fixture('palette.png'),'tEXt',bytes('XML:com.adobe.xmp\0'+'x'.repeat(1024*1024+10)+'c2pa'))
+  assert.equal(scanImage(oversized).c2pa,'detected-not-verified')
+})
+test('decision reasons distinguish missing local target and legacy whole-block metadata', () => {
+  const base = fixture('progressive.jpg')
+  const legacy=jpgInsert(base,225,bytes('http://ns.adobe.com/xap/1.0/\0<dc:rights>copyright</dc:rights>'))
+  assert.equal(scanImage(legacy).c2paDecision?.code,'NO_EMBEDDED_MANIFEST')
+  const dangling=jpgInsert(base,225,concat(bytes('http://ns.adobe.com/xap/1.0/\0'),localXmp()))
+  assert.equal(scanImage(dangling).c2paDecision?.code,'BLOCKED_AMBIGUOUS_PROVENANCE')
 })
 test('C2PA store rejects malformed UUID/length, duplicate and misplaced containers', async () => {
   const store = c2paStore(), wrong = store.slice(); wrong[16]! ^= 1

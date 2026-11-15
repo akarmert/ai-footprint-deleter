@@ -1,8 +1,8 @@
 async (page) => {
   const assert = (value, message) => { if (!value) throw new Error(message); };
   await page.goto('http://localhost:3000');
-  const upload = async (ai, malformed = false) => {
-    await page.evaluate(async ({ ai, malformed }) => {
+  const upload = async (ai, malformed = false, localReference = false) => {
+    await page.evaluate(async ({ ai, malformed, localReference }) => {
       const e = text => new TextEncoder().encode(text);
       const join = (...parts) => { const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0)); let o = 0; for (const p of parts) { out.set(p, o); o += p.length; } return out; };
       const u32 = n => { const a = new Uint8Array(4); new DataView(a.buffer).setUint32(0, n); return a; };
@@ -15,9 +15,10 @@ async (page) => {
       const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/jpeg'));
       const jpeg=new Uint8Array(await blob.arrayBuffer()), parts=[];
       for(let pos=8,seq=1;pos<store.length;pos+=64,seq++) { const p=join(new Uint8Array([74,80,0,1]),u32(seq),store.subarray(0,8),store.subarray(pos,pos+64));parts.push(join(new Uint8Array([255,235,(p.length+2)>>8,(p.length+2)&255]),p)); }
+      if(localReference) { const p=e('http://ns.adobe.com/xap/1.0/\0<r:RDF xmlns:r="http://www.w3.org/1999/02/22-rdf-syntax-ns#"><r:Description r:about="" xmlns:p="http://purl.org/dc/terms/" p:provenance="self#jumbf=/c2pa/urn:uuid:browser-fixture/c2pa.claim.v2"/></r:RDF>');parts.push(join(new Uint8Array([255,225,(p.length+2)>>8,(p.length+2)&255]),p)); }
       const dt=new DataTransfer();dt.items.add(new File([jpeg.subarray(0,2),...parts,jpeg.subarray(2)],'c2pa-fixture.jpg',{type:'image/jpeg'}));
       const input=document.querySelector('#media');input.files=dt.files;input.dispatchEvent(new Event('change',{bubbles:true}));
-    }, { ai, malformed });
+    }, { ai, malformed, localReference });
     await page.getByText(/Metadata taraması tamamlandı|Tarama tamamlandı · Temizleme engellendi/,{exact:true}).waitFor();
   };
   await upload(true);
@@ -83,6 +84,14 @@ async (page) => {
       selection.removeAllRanges();probe.remove();return valid;
     }),`Long value readability/selection ${width}`);
   }
+  await upload(true,false,true);
+  assert(await page.getByText(/SUPPORTED_WITH_LOCAL_XMP_REFERENCE/).count()>0,'Local decision missing');
+  await remove.click();
+  assert(await dialog.getByText(/yerel XMP provenance alanı/).count()>0,'Local XMP consent missing');
+  await dialog.getByRole('button',{name:'Yetkim var, yalnız C2PA’yı kaldır',exact:true}).click();
+  await page.getByRole('heading',{name:'Gömülü C2PA ve ilişkili yerel XMP işaretçisi kaldırıldı',exact:true}).waitFor();
+  assert(await page.locator('.verification').getByText(/Değiştirilen alan:/).count()===1,'Changed XMP field missing');
+  assert(await page.getByRole('button',{name:"Metadata'yı Temizle",exact:true}).isDisabled(),'Local source metadata action unblocked');
   await upload(false);
   await checkStatus('uncertain','rgb(48, 38, 28)','rgb(255, 140, 0)',1);
   assert(await results.getByRole('heading',{name:'Provenance bulundu, AI durumu belirsiz',exact:true}).count()===1,'Non AI provenance mislabeled');
