@@ -4,6 +4,9 @@
 // Adjust fixture path below. Native OS picker is replaced by a REAL OPFS handle;
 // this exercises structured cloning + actual Worker/disk operations, NOT native permission UI.
 async page => {
+  const context = await page.context().browser().newContext();
+  page = await context.newPage();
+  try {
   const fixture = 'C:/Users/Mert/AppData/Local/Temp/kilo/phase3-browser.mp4';
   const assert = (value, message) => { if (!value) throw new Error(message); };
   await page.goto('http://localhost:3000');
@@ -12,6 +15,8 @@ async page => {
   page.on('request', listener);
   await page.locator('#media').setInputFiles(fixture);
   await page.getByText('Metadata taraması tamamlandı', { exact: true }).waitFor();
+  assert(await page.locator('#advanced-tools').evaluate(element => element.open), 'Video advanced tools closed by default');
+  assert(await page.getByRole('button', { name: "Metadata'yı Temizle", exact: true }).isVisible(), 'Video cleaning hidden');
   await page.evaluate(async () => {
     const root = await navigator.storage.getDirectory();
     window.showSaveFilePicker = async () => root.getFileHandle('afc-acceptance-output.mp4', { create: true });
@@ -69,4 +74,7 @@ async page => {
   assert(await page.evaluate(() => window.testVideoWorkers[0].terminated), 'Recovery did not retire old Worker');
   await page.reload();
   return { disk, requests, watchdog: 'passed', commitRecovery: 'passed', nativePickerTested: false, real1GBTested: false };
+  } finally {
+    await context.close();
+  }
 }

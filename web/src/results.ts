@@ -34,16 +34,20 @@ export function describeResults(scan: MediaScan, file: { name: string; size: num
   if (provenance) add('c2pa-status', 'C2PA Status', scan.c2pa, 'c2pa');
   for (const record of scan.records) {
     const value = record.preview;
-    const ai = aiEvidence(value);
+    const structural = 'footprints' in scan ? scan.footprints : undefined;
+    const ai = structural ? structural.evidence.some(e => e.recordId === record.id && (e.category === 'explicit-ai' || e.category === 'metadata-hint')) : aiEvidence(value);
     const category: Category = /c2pa|provenance|jumbf|jumd/i.test(record.kind) ? 'c2pa'
       : /ICC|color|cHRM|gAMA|sRGB|sBIT/i.test(record.kind) ? 'color'
       : ai || /\bprompt\b|negative_prompt|sampler_name|cfg_scale/i.test(value) ? 'production'
       : /exif|gps|iptc/i.test(record.kind) || /\b(?:copyright|creator|author|location|serialnumber|gps)\b/i.test(value) ? 'privacy' : 'other';
     fields.push({ id: `record-${record.id}`, label: record.kind, value, category, ai, record });
   }
-  const textDeclarations = scan.records.filter(record => record.kind === 'XMP' && explicitTextDeclaration(record.preview));
+  const structural = 'footprints' in scan ? scan.footprints : undefined;
+  const textDeclarations = scan.records.filter(record => structural
+    ? structural.evidence.some(e => e.recordId === record.id && e.category === 'explicit-ai')
+    : record.kind === 'XMP' && explicitTextDeclaration(record.preview));
   const c2paSources = scan.provenance?.manifests.flatMap(manifest => manifest.aiSources) ?? [];
   const declarationCount = textDeclarations.length + c2paSources.length;
-  const aiState = declarationCount ? 'declared' : provenance ? 'uncertain' : 'not-found';
+  const aiState = declarationCount ? 'declared' : provenance || structural?.incomplete || structural?.state === 'METADATA_HINTS' ? 'uncertain' : 'not-found';
   return { fields, provenance, aiCount: fields.filter(field => field.ai).length, declarationCount, aiState, textDeclarations, c2paSources, sectionCount: categories.filter(category => fields.some(field => field.category === category.id)).length };
 }

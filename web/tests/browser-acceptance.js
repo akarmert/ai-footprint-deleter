@@ -1,13 +1,18 @@
 // Run via Playwright browser_run_code with this file after npm run build && npm start.
-// This script uses the supplied local page; it installs no browser/runtime dependencies.
+// This script uses an isolated local context; it installs no browser/runtime dependencies.
 async (page) => {
+  const context = await page.context().browser().newContext();
+  page = await context.newPage();
+  try {
   // Adjust this local fixture path when running in a different checkout.
   const root = 'C:/_projectsmert/ai-footprint-deleter/web/tests/fixtures';
   const assert = (condition, message) => { if (!condition) throw new Error(message); };
+  const openAdvanced = async () => { const tools = page.locator('#advanced-tools'); if (!await tools.evaluate(element => element.open)) await tools.locator(':scope > summary').click(); };
   await page.goto('http://localhost:3000');
   assert(await page.locator('.inspection-panel').count() === 0, 'Workspace exposed before file selection');
   await page.locator('#media').setInputFiles(`${root}/image-1.png`);
   await page.getByText('Metadata taraması tamamlandı', { exact: true }).waitFor();
+  await openAdvanced();
   assert(await page.getByRole('button', { name: 'Güvenli Mod (Önerilen)', exact: true }).getAttribute('aria-pressed') === 'true', 'Safe mode not default');
   assert(await page.locator('.mode.active').innerText().then(text => text.includes('ICC')), 'Safe ICC policy missing');
   const cards = page.locator('button.mode');
@@ -43,14 +48,19 @@ async (page) => {
   for (const ext of ['jpg', 'png', 'webp']) {
     await page.locator('input[type=file]').setInputFiles(`${root}/image-1.${ext}`);
     await page.getByText('Metadata taraması tamamlandı', { exact: true }).waitFor();
-    assert(await page.locator('input[type=checkbox]').count() === 0, 'Per-record selection remains');
-    assert(await page.locator('details.metadata').getAttribute('open') === null, 'Technical details open by default');
+  await openAdvanced();
+    assert(await page.locator('#advanced-tools input[type=checkbox]').count() === 0, 'Per-record selection remains');
+    assert(await page.locator('#advanced-tools').evaluate(element => element.open), 'Advanced tools not opened for legacy workflow');
+    assert(await page.locator('#advanced-tools > details.metadata').getAttribute('open') === null, 'Policy details open by default');
     await page.getByRole('button', { name: "Metadata'yı Temizle", exact: true }).click();
     await page.getByRole('button', { name: 'Vazgeç', exact: true }).click();
     assert(await page.locator('.verification').count() === 0, 'Rejected consent produced output');
     await page.getByRole('button', { name: "Metadata'yı Temizle", exact: true }).click();
     await page.getByRole('button', { name: 'Yetkim var, temizle', exact: true }).click();
     await page.getByText('Temizlendi · Çıktı doğrulandı', { exact: true }).waitFor();
+    assert(await page.locator('#footprint-title').innerText() === 'Gelişmiş işlem çıktısı doğrulandı', 'Advanced output remains in scanning state');
+    assert(await page.locator('.metadata-results .panel-heading .chip').innerText() === 'Temizlenmiş çıktı', 'Advanced output mislabeled as source');
+    assert(!await page.locator('.status').evaluate(element => element.classList.contains('has-warning')), 'Verified advanced output shown as failure');
     const waiting = page.waitForEvent('download');
     await page.getByRole('button', { name: 'Temizlenmiş Dosyayı İndir', exact: true }).click();
     results.push({ ext, name: (await waiting).suggestedFilename(), checks: await page.locator('.verification').innerText() });
@@ -59,19 +69,32 @@ async (page) => {
   }
   await page.locator('#media').setInputFiles(`${root}/image-1.png`);
   await page.getByText('Metadata taraması tamamlandı', { exact: true }).waitFor();
+  await openAdvanced();
   await page.getByRole('button', { name: 'Kapsamlı Temizlik', exact: true }).click();
   await page.getByText(/ICC kaldırılması renk yönetimini/).waitFor();
   for (const ext of ['jpg', 'png', 'webp']) {
     await page.locator('#media').setInputFiles(`${root}/image-1.${ext}`);
     await page.getByText('Metadata taraması tamamlandı', { exact: true }).waitFor();
+  await openAdvanced();
     await page.getByRole('button', { name: "Metadata'yı Temizle", exact: true }).click();
     await page.getByRole('button', { name: 'Yetkim var, temizle', exact: true }).click();
     await page.getByText('Temizlendi · Çıktı doğrulandı', { exact: true }).waitFor();
+    assert(await page.locator('#footprint-title').innerText() === 'Gelişmiş işlem çıktısı doğrulandı', 'Advanced output remains in scanning state');
+    assert(await page.locator('.metadata-results .panel-heading .chip').innerText() === 'Temizlenmiş çıktı', 'Advanced output mislabeled as source');
+    assert(!await page.locator('.status').evaluate(element => element.classList.contains('has-warning')), 'Verified advanced output shown as failure');
     const result = await page.locator('.verification').innerText();
     assert(result.includes(ext === 'png' ? '1 teknik kayıt korundu' : '0 teknik kayıt korundu'), 'Comprehensive retained count incorrect');
   }
-  await page.getByRole('button', { name: 'Güvenli Mod (Önerilen)', exact: true }).click();
-  assert(await page.locator('.verification').count() === 0, 'Mode change retained stale output');
+  const safeMode = page.getByRole('button', { name: 'Güvenli Mod (Önerilen)', exact: true });
+  assert(await safeMode.isDisabled(), 'Mode can discard verified output');
+  await safeMode.evaluate(element => element.click());
+  assert(await page.locator('.verification').count() === 1, 'Mode change discarded verified output');
+  await page.getByRole('button', { name: 'Seçimi kaldır', exact: true }).click();
+  await page.locator('#media').setInputFiles(`${root}/image-1.png`);
+  await page.getByText('Metadata taraması tamamlandı', { exact: true }).waitFor();
+  await openAdvanced();
+  await safeMode.click();
+  assert(await safeMode.getAttribute('aria-pressed') === 'true', 'Mode cannot change for new source');
   page.off('request', listener);
   assert(requests.every(r => r.method === 'GET' && r.body === null && /\/assets\/inspect.worker-[\w-]+\.js$/.test(r.url)), 'Unexpected media/network request');
   const storage = await page.evaluate(async () => ({ local: localStorage.length, session: sessionStorage.length, databases: (await indexedDB.databases()).length }));
@@ -93,10 +116,11 @@ async (page) => {
   });
   await page.locator('input[type=file]').setInputFiles(`${root}/image-1.png`);
   await page.getByRole('button', { name: 'İptal et', exact: true }).click();
-  await page.getByRole('alert').waitFor();
+  await page.getByRole('alert').waitFor().catch(error => { throw new Error(`Scan cancellation alert missing: ${error.message}`); });
   await page.locator('input[type=file]').setInputFiles(`${root}/image-1.png`);
   await page.locator('input[type=file]').setInputFiles(`${root}/image-1.webp`);
   await page.getByText('Metadata taraması tamamlandı', { exact: true }).waitFor();
+  await openAdvanced();
   assert(await page.locator('.filename').innerText() === 'image-1.webp', 'Stale scan replaced current file');
   await page.getByRole('button', { name: "Metadata'yı Temizle", exact: true }).click();
   await page.getByRole('button', { name: 'Yetkim var, temizle', exact: true }).click();
@@ -115,7 +139,7 @@ async (page) => {
     }, mode);
     await page.locator('input[type=file]').setInputFiles(`${root}/image-1.png`);
     if (mode !== 'timeout') await page.evaluate(mode => window.testWorkers[0][mode](), mode);
-    await page.getByRole('alert').waitFor();
+    await page.getByRole('alert').waitFor().catch(error => { throw new Error(`${mode} alert missing: ${error.message}`); });
     assert(await page.getByRole('button', { name: 'Temizlenmiş Dosyayı İndir', exact: true }).count() === 0, `${mode}: download enabled`);
     assert(await page.evaluate(() => window.testWorkers[0].terminated), `${mode}: worker active`);
   }
@@ -128,6 +152,7 @@ async (page) => {
   });
   await page.locator('input[type=file]').setInputFiles(`${root}/image-1.png`);
   await page.getByText('Metadata taraması tamamlandı', { exact: true }).waitFor();
+  await openAdvanced();
   await page.getByRole('button', { name: "Metadata'yı Temizle", exact: true }).click();
   await page.getByRole('button', { name: 'Yetkim var, temizle', exact: true }).click();
   await page.getByText('Kontrollü hash hatası', { exact: true }).waitFor();
@@ -144,7 +169,9 @@ async (page) => {
     data.items.add(new File([bytes.slice(0, 2), new Uint8Array([255,235,0,8,99,50,112,97,0,0]), bytes.slice(2)], 'provenance.jpg', { type: 'image/jpeg' }));
     const input = document.querySelector('#media'); input.files = data.files; input.dispatchEvent(new Event('change', { bubbles: true }));
   });
-  await page.getByText(/tüm temizleme engellendi/).waitFor();
+  await page.getByText('Tarama tamamlandı · Temizleme engellendi', { exact: true }).waitFor();
+  await openAdvanced();
+  await page.locator('#advanced-tools').getByText(/metadata temizliği engellendi/).waitFor();
   assert(await page.getByRole('button', { name: "Metadata'yı Temizle", exact: true }).isDisabled(), 'Provenance cleanup enabled');
   assert(await page.locator('dialog[open]').count() === 0, 'Provenance can obtain consent');
   await page.evaluate(() => {
@@ -152,8 +179,12 @@ async (page) => {
     const input = document.querySelector('#media'); input.files = data.files; input.dispatchEvent(new Event('change', { bubbles: true }));
   });
   await page.getByText('Metadata taraması tamamlandı', { exact: true }).waitFor();
+  await openAdvanced();
   await page.getByText(/Kaldırılabilecek metadata bulunamadı|temizlenecek kayıt yok/).waitFor();
   assert(await page.getByRole('button', { name: "Metadata'yı Temizle", exact: true }).isDisabled(), 'Empty cleanup enabled');
   assert(await page.locator('.verification').count() === 0, 'Empty source falsely verified');
   return { results, requests, storage, provenance: 'blocked', empty: 'explained', lifecycle: 'cancel/replace/consent/timeout/error/messageerror and actual worker hash-failure passed' };
+  } finally {
+    await context.close();
+  }
 }

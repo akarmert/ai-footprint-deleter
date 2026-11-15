@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { MediaScan } from './protocol';
 import { categories, describeResults, type Category } from './results';
 
-export function MetadataResults({ scan, file }: { scan: MediaScan; file: File }) {
+export function MetadataResults({ scan, file, origin = 'source' }: { scan: MediaScan; file: File; origin?: 'source' | 'output' }) {
   const result = describeResults(scan, file);
   const [filter, setFilter] = useState<Category | 'all'>('all');
   const [opened, setOpened] = useState<Category[]>(['file']);
@@ -10,7 +10,7 @@ export function MetadataResults({ scan, file }: { scan: MediaScan; file: File })
     .map(category => ({ ...category, fields: result.fields.filter(field => field.category === category.id) }))
     .filter(category => category.fields.length > 0);
   return <section className="metadata-results" aria-labelledby="results-title">
-    <div className="panel-heading"><h3 id="results-title">Metadata sonuçları</h3><span className="chip">Kaynak dosya</span></div>
+    <div className="panel-heading"><h3 id="results-title">Metadata sonuçları</h3><span className="chip">{origin === 'output' ? 'Temizlenmiş çıktı' : 'Kaynak dosya'}</span></div>
     <div className={`footprint-status ${result.aiState === 'declared' ? 'has-footprints' : result.aiState === 'uncertain' ? 'uncertain-footprints' : ''}`} role="status">
       <h3>{(result.aiState === 'declared' || result.aiState === 'uncertain') && <svg className="status-warning-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"><path d="M10.3 4.5 2.6 18a2 2 0 0 0 1.7 3h15.4a2 2 0 0 0 1.7-3L13.7 4.5a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4m0 4h.01"/></svg>}<span>{result.aiState === 'declared' ? 'AI üretim beyanı bulundu' : result.aiState === 'uncertain' ? 'Provenance bulundu, AI durumu belirsiz' : 'AI üretim beyanı bulunamadı'}</span></h3>
       <p>İncelenebilen kayıtlarda {result.declarationCount} açık beyan kaynağı. Metin tabanlı araç/parametre ipuçları: {result.aiCount} blok; bunlar tek başına AI üretim kanıtı değildir.</p>
@@ -23,7 +23,7 @@ export function MetadataResults({ scan, file }: { scan: MediaScan; file: File })
       <p className="scan-note">Bu sonuç metadata/provenance taramasına dayanır. Piksel düzeyinde AI tespiti değildir. Tespit edilememesi yokluk garantisi değildir.</p>
     </div>
     <div className="result-counts"><div><strong>{result.fields.length}</strong><span>Gösterilen alan / blok</span></div><div><strong>{result.aiCount}</strong><span>Metin tabanlı AI ipucu (blok)</span></div><div><strong>{result.sectionCount}</strong><span>Bölüm sayısı</span></div></div>
-    <details><summary>Tarama kapsamı ve sayımlar</summary><p className="scan-note">Gösterilen alan / blok sayısı, aşağıdaki dosya alanları ve metadata bloklarının toplamıdır; blok içindeki alt alan sayısı değildir. Metin ipucu sayacı, araç/parametre işareti bulunan blokları sayar; her eşleşme bağımsız kanıt değildir. Metadata önizlemeleri ve XMP beyanı araması ilk 512 karakterle sınırlıdır; sonraki alanlar ve rdf:resource biçimi kaçırılabilir. XMP eşleşmesi yapısal XML/namespace doğrulaması değildir; yorum veya örnek metin de eşleşebilir. Desteklenmeyen C2PA alanları çözümlenemedi olarak gösterilir.</p></details>
+    <details><summary>Tarama kapsamı ve sayımlar</summary><p className="scan-note">Gösterilen alan / blok sayısı, aşağıdaki dosya alanları ve metadata bloklarının toplamıdır; blok içindeki alt alan sayısı değildir. Metin ipucu sayacı, araç/parametre işareti bulunan blokları sayar; her eşleşme bağımsız kanıt değildir. Görünür blok önizlemeleri ilk 512 karakterle sınırlıdır. Görsel kaynak analizi bu önizlemeden bağımsız, boyut sınırları olan metadata ve namespace doğrulamalı XMP alanlarını kullanır; desteklenmeyen veya tam okunamayan alanlar ayrıca belirtilir. Video akışındaki metin önizlemeleri birleşik görsel analizi kapsamına girmez. Desteklenmeyen C2PA alanları çözümlenemedi olarak gösterilir.</p></details>
     <div className="category-filters" role="group" aria-label="Metadata kategorileri"><button aria-pressed={filter === 'all'} onClick={() => setFilter('all')}>Tümü <span>{result.fields.length}</span></button>{sections.map(category => {
       const count = category.fields.length;
       return <button key={category.id} aria-pressed={filter === category.id} onClick={() => { setFilter(category.id); setOpened(current => [...new Set([...current, category.id])]); }}>{category.label} <span>{count}</span></button>;

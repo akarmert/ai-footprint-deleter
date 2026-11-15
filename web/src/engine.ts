@@ -1,5 +1,8 @@
 import { validateC2paStore, resolveLocalC2paReference } from './c2pa-structure.ts'
 import { analyzeXmp, removeXmpReference } from './xmp.ts'
+import { buildFootprints, classifyFootprintText, type FootprintRecordAnalysis, type FootprintReport, type FootprintPlan, type FootprintResult } from './footprints.ts'
+import { readC2pa } from './c2pa.ts'
+import type { C2paReport } from './c2pa-types.ts'
 
 export type C2paDecisionCode = 'SUPPORTED_EMBEDDED' | 'SUPPORTED_WITH_LOCAL_XMP_REFERENCE' | 'BLOCKED_EXTERNAL_REFERENCE' | 'BLOCKED_AMBIGUOUS_PROVENANCE' | 'BLOCKED_UNSUPPORTED_STRUCTURE' | 'BLOCKED_MALFORMED_METADATA' | 'NO_EMBEDDED_MANIFEST'
 export type C2paDecision = { code: C2paDecisionCode; reason: string }
@@ -8,8 +11,8 @@ type XmpPacket = { part: Part; prefix: number; analysis: ReturnType<typeof analy
 type XmpPatch = { part: Part; payload: Uint8Array; previousValue: string }
 
 export type CleaningMode = 'safe' | 'comprehensive'
-export type MetadataRecord = { id: string; kind: string; bytes: number; preview: string; status: 'cleanable' | 'protected' | 'unsupported'; reason: string; requiresRightsConsent: boolean; comprehensiveOnly?: boolean }
-export type Scan = { format: 'JPEG' | 'PNG' | 'WebP'; width: number; height: number; alpha: boolean; orientation: number | null; records: MetadataRecord[]; c2pa: string; cleaningBlocked: boolean; c2paRemovable?: boolean; c2paDecision?: C2paDecision; notes: string[] }
+export type MetadataRecord = { id: string; kind: string; bytes: number; preview: string; status: 'cleanable' | 'protected' | 'unsupported'; reason: string; requiresRightsConsent: boolean; comprehensiveOnly?: boolean; footprintAnalysis?: FootprintRecordAnalysis }
+export type Scan = { format: 'JPEG' | 'PNG' | 'WebP'; width: number; height: number; alpha: boolean; orientation: number | null; records: MetadataRecord[]; c2pa: string; cleaningBlocked: boolean; c2paRemovable?: boolean; c2paDecision?: C2paDecision; notes: string[]; footprints?: FootprintReport; footprintPlan?: FootprintPlan; provenance?: C2paReport }
 type Part = { start: number; end: number; payload: Uint8Array; kind: string; record?: MetadataRecord; image: boolean }
 type Parsed = { scan: Scan; parts: Part[]; header: number; storeParts: Part[]; otherBlocked: boolean; xmpPatch?: XmpPatch }
 const MAX = 128 * 1024 * 1024
@@ -40,7 +43,7 @@ function crc(data: Uint8Array): number {
   for (const value of data) c = crcTable[(c ^ value) & 255]! ^ (c >>> 8)
   return (c ^ 0xffffffff) >>> 0
 }
-function exif(data: Uint8Array): { orientation: number | null; value: string } {
+function exif(data: Uint8Array): { orientation: number | null; value: string; footprintAnalysis?: FootprintRecordAnalysis } {
   if (ascii(data, 0, Math.min(6, data.length)) === 'Exif\0\0') data = data.subarray(6)
   try {
     const bounds = (p: number, n: number) => { if (!Number.isSafeInteger(p) || p < 0 || n < 0 || p + n > data.length) fail('EXIF bounds') }
@@ -58,6 +61,7 @@ function exif(data: Uint8Array): { orientation: number | null; value: string } {
     let orientation = 1
     let seenOrientation = false
     const values: string[] = []
+    const hints = new Set<string>()
     const sizes: Record<number, number> = { 1: 1, 2: 1, 3: 2, 4: 4, 5: 8, 6: 1, 7: 1, 8: 2, 9: 4, 10: 8, 11: 4, 12: 8, 13: 4 }
     while (queue.length) {
       const offset = queue.shift()!
@@ -86,11 +90,12 @@ function exif(data: Uint8Array): { orientation: number | null; value: string } {
           if (![4, 13].includes(type) || count > 16) fail('EXIF pointer')
           for (let j = 0; j < count; j++) queue.push(r32(p + j * 4))
         }
+        if ([270, 271, 272, 305, 315, 33432, 37510, 40091, 40092, 40093, 40094, 40095].includes(tag)) for (const hint of classifyFootprintText(text(data.subarray(p, p + Math.min(length, MAX_TEXT))), length <= MAX_TEXT).hints) hints.add(hint)
         if ([270, 271, 272, 305, 315, 33432, 37510, 40091, 40092, 40093, 40094, 40095].includes(tag)) values.push(`${({ 270: 'ImageDescription', 271: 'Make', 272: 'Model', 305: 'Software', 315: 'Artist/Creator', 33432: 'Copyright', 37510: 'UserComment' } as Record<number, string>)[tag] ?? tag}: ${preview(text(data.subarray(p, p + Math.min(length, PREVIEW * 2))))}`)
       }
       queue.push(r32(offset + 2 + count * 12))
     }
-    return { orientation, value: values.join('; ').slice(0, PREVIEW) }
+    return { orientation, value: values.join('; ').slice(0, PREVIEW), footprintAnalysis: { complete: false, explicit: [], hints: [...hints], dedicated: false } }
   } catch { return { orientation: null, value: 'EXIF TIFF ayrıştırılamadı veya güvenli sınırı aştı' } }
 }
 function validICC(data: Uint8Array): boolean {
@@ -128,6 +133,26 @@ function parse(data: Uint8Array): Parsed {
     metadataBytes += part.payload.length
     if (metadataBytes > MAX_METADATA) fail('Metadata 16 MiB sınırı')
     part.record = { id: `${kind}:${parts.length - 1}`, kind, bytes: part.payload.length, preview: preview(value), status: status === 'cleanable' && rights ? 'protected' : status, reason, requiresRightsConsent: rights }
+    if (['PNG text', 'Comment'].includes(kind)) {
+      let complete = part.payload.length <= MAX_TEXT
+      try { new TextDecoder('utf-8', { fatal: true }).decode(part.payload.subarray(0, MAX_TEXT)) } catch { complete = false }
+      if (kind === 'Comment') part.record.footprintAnalysis = classifyFootprintText(value, complete, { kind: 'jpeg' })
+      else {
+        const keyEnd = part.payload.indexOf(0)
+        let bodyStart = keyEnd + 1, language = '', translated = ''
+        if (part.kind === 'iTXt') {
+          const langEnd = part.payload.indexOf(0, keyEnd + 3), translatedEnd = part.payload.indexOf(0, langEnd + 1)
+          language = text(part.payload.subarray(keyEnd + 3, langEnd))
+          translated = text(part.payload.subarray(langEnd + 1, translatedEnd))
+          bodyStart = translatedEnd + 1
+          complete &&= langEnd >= keyEnd + 3 && translatedEnd >= langEnd + 1 && part.payload[keyEnd + 1] === 0 && part.payload[keyEnd + 2] === 0
+        }
+        const keyword = text(part.payload.subarray(0, keyEnd))
+        complete &&= keyEnd > 0 && !/^raw profile type/i.test(keyword)
+        part.record.footprintAnalysis = classifyFootprintText(text(part.payload.subarray(bodyStart)), complete, { kind: 'png', keyword, language, translated })
+      }
+    }
+    else if (['EXIF', 'Compressed PNG text'].includes(kind)) part.record.footprintAnalysis = { complete: false, explicit: [], hints: [], dedicated: false }
     scan.records.push(part.record)
   }
   const provenance = (part: Part, store = false) => {
@@ -139,12 +164,13 @@ function parse(data: Uint8Array): Parsed {
   }
   const metadata = (part: Part, kind: string) => {
     if (kind === 'C2PA' || kind === 'APP11') { provenance(part, true); return }
-    if (kind === 'ICC') { record(part, kind, 'protected', 'Renk profili her zaman korunur'); return }
+    if (kind === 'ICC') { record(part, kind, 'protected', 'Renk profili her zaman korunur'); part.record!.footprintAnalysis = { complete: false, explicit: [], hints: [], dedicated: false }; return }
     if (kind === 'EXIF') {
       const parsed = exif(part.payload)
       if (scan.orientation !== 1 && scan.orientation !== parsed.orientation) scan.orientation = null
       else scan.orientation = parsed.orientation
       record(part, kind, parsed.orientation === 1 ? 'cleanable' : 'protected', parsed.orientation === 1 ? 'TIFF doğrulandı; yön 1' : 'Yön dönüşümü veya bilinmeyen TIFF korunur', parsed.value, parsed.orientation === 1)
+      if (parsed.footprintAnalysis) part.record!.footprintAnalysis = parsed.footprintAnalysis
       return
     }
     if (kind === 'PNG text' && ascii(part.payload, 0, part.payload.indexOf(0)) === 'XML:com.adobe.xmp') { metadata(part, 'XMP'); return }
@@ -189,6 +215,7 @@ function parse(data: Uint8Array): Parsed {
       if (orientationHint) otherBlocked = true
       const protectedXmp = analysis.status !== 'valid' && !legacyBlockOnly || analysis.references.length > 0 || hints || orientationHint
       record(part, kind, protectedXmp ? 'protected' : 'cleanable', protectedXmp ? 'XMP kaynak/yön bilgisi veya desteklenmeyen yapı korunur' : 'XMP blok düzeyinde kaldırılabilir', value, !protectedXmp)
+      part.record!.footprintAnalysis = { complete: analysis.status === 'valid' && !orientationHint, explicit: analysis.aiSources ?? [], hints: [...new Set([...(analysis.hints ?? []), ...classifyFootprintText(text(part.payload.subarray(prefix, prefix + MAX_TEXT)), false).hints])], dedicated: false }
       return
     }
     let tail = ''
@@ -201,6 +228,7 @@ function parse(data: Uint8Array): Parsed {
     const value = text(part.payload)
     if (part.payload.length > MAX_TEXT || (kind === 'PNG text' && /raw profile type/i.test(value.slice(0, 80)))) { otherBlocked = true; scan.cleaningBlocked = true; record(part, kind, 'protected', 'Metin sınırı veya gömülü profil/provenans; tüm temizlik engellendi', value); return }
     record(part, kind, 'cleanable', 'Blok düzeyinde kaldırılabilir; hak bilgileri içerebilir', value, true)
+    if (kind === 'IPTC') part.record!.footprintAnalysis = { ...classifyFootprintText(text(part.payload.subarray(0, MAX_TEXT)), false), dedicated: false }
   }
   let header: number
   if (equal(data.subarray(0, 8), new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]))) {
@@ -332,7 +360,9 @@ function parse(data: Uint8Array): Parsed {
         const safe = !scanned && components.length === 0 && p.length === 14 && p[5] === 1 && p[6]! <= 2 && p[7]! <= 2 && u16(p, 8) > 0 && u16(p, 10) > 0 && p[12] === 0 && p[13] === 0
         part.image = false; record(part, 'JFIF', 'protected', safe ? 'Küçük resimsiz JFIF; kapsamlı modda yoğunluk bilgisi kaldırılabilir' : 'Desteklenmeyen JFIF korunur')
         if (safe) part.record!.comprehensiveOnly = true
+        part.record!.footprintAnalysis = { complete: safe, explicit: [], hints: [], dedicated: false }
       }
+      else if (marker === 224) { part.image = false; record(part, ascii(p, 0, 5) === 'JFXX\0' ? 'JFXX' : 'APP0', 'protected', 'Bilinmeyen APP0 veya küçük resim korunur') }
       else if (marker >= 224 && marker <= 239 && ![224, 238].includes(marker)) record(part, `APP${marker - 224}`, 'protected', 'Bilinmeyen APP korunur')
       pos = finish
     }
@@ -470,7 +500,11 @@ function parse(data: Uint8Array): Parsed {
   }
   return { scan, parts, header: header!, storeParts, otherBlocked, ...(xmpPatch ? { xmpPatch } : {}) }
 }
-export function scanImage(data: Uint8Array): Scan { return parse(data).scan }
+export function scanImage(data: Uint8Array): Scan {
+  const scan = parse(data).scan
+  const provenance = readC2pa(data, scan.format, scan.c2pa !== 'not-detected-not-guaranteed')
+  return Object.assign(scan, { provenance }, buildFootprints(scan, provenance))
+}
 async function payloadHash(parts: Part[]): Promise<string> {
   const payloads = parts.filter(p => p.image).map(p => p.payload)
   const length = payloads.reduce((n, p) => n + p.length, 0)
@@ -570,6 +604,45 @@ export async function cleanC2pa(data: Uint8Array, consent: boolean): Promise<Cle
   const originalHash = await payloadHash(before.parts), hash = await payloadHash(after.parts)
   if (originalHash !== hash) fail('Görüntü yükü hash değişti')
   return { operation: 'c2pa-store-removal', changedFields: before.xmpPatch ? [{ field: '{http://purl.org/dc/terms/}provenance', previousValue: preview(before.xmpPatch.previousValue) }] : [], mode: 'safe', data: output, scan: after.scan, removed: before.storeParts.length, retained: after.scan.records.length, payloadHash: hash, checks: ['Single structurally supported top-level C2PA store removed atomically; signatures not verified', before.xmpPatch ? 'Only validated local XMP provenance field removed; unrelated XML semantics and source bytes preserved; container lengths/CRC adjusted' : 'All retained raw blocks identical; only WebP RIFF size changed', 'Encoded payload SHA-256 and format/dimensions/alpha/orientation identical', 'Output reparsed without detected provenance or cleaning blockers', 'Top-level scope only: retained EXIF, thumbnails and nested metadata are not claimed removed'] }
+}
+export async function cleanFootprints(data: Uint8Array, consent: { c2paConsent: boolean; rightsConsent: boolean }): Promise<{ footprintResult: FootprintResult; output?: CleanResult }> {
+  // No await before snapshot; all subsequent stages use privately owned bytes.
+  parse(data)
+  const source = data.slice()
+  const initial = scanImage(source), before = initial.footprints!, plan = initial.footprintPlan!
+  const result = (status: FootprintResult['status'], reason: string, after?: FootprintReport): FootprintResult => ({ status, before, plan, reason, ...(after ? { after } : {}) })
+  if (typeof consent?.c2paConsent !== 'boolean' || typeof consent?.rightsConsent !== 'boolean') return { footprintResult: result('BLOCKED', 'Invalid consent') }
+  if (plan.blocked || plan.requiresC2paConsent && !consent.c2paConsent || plan.requiresRightsConsent && !consent.rightsConsent) return { footprintResult: result('BLOCKED', 'Safety blocker or required separate consent missing') }
+  if (!plan.removeC2pa && !plan.metadataIds.length) return { footprintResult: result(before.evidence.length || before.incomplete ? 'BLOCKED' : 'NOTHING_TO_REMOVE', 'No safely removable footprint blocks') }
+  try {
+    let working: Uint8Array = source
+    let removed = 0
+    const checks: string[] = [], changedFields: ChangedField[] = []
+    if (plan.removeC2pa) {
+      const stage = await cleanC2pa(working, consent.c2paConsent)
+      working = stage.data; removed += stage.removed; checks.push(...stage.checks); changedFields.push(...stage.changedFields ?? [])
+    }
+    // Reparse after C2PA edits: IDs and XMP bytes from the original scan are stale.
+    const original = parse(source), target = parse(working)
+    const expected = original.parts.filter(p => p.record && plan.metadataIds.includes(p.record.id))
+    const fresh = scanImage(working), freshPlan = fresh.footprintPlan!
+    const actual = target.parts.filter(p => p.record && freshPlan.metadataIds.includes(p.record.id))
+    if (expected.length !== actual.length || expected.some((p, i) => p.kind !== actual[i]!.kind || !equal(source.subarray(p.start, p.end), working.subarray(actual[i]!.start, actual[i]!.end)))) throw new Error('Planned footprint targets changed')
+    if (freshPlan.blocked || freshPlan.removeC2pa) throw new Error('Post-C2PA safety blocker')
+    const stage = await cleanImage(working, freshPlan.metadataIds, consent.rightsConsent, 'safe')
+    removed += stage.removed; checks.push(...stage.checks)
+    const finalScan = scanImage(stage.data), after = finalScan.footprints!
+    if (finalScan.footprintPlan!.metadataIds.length || finalScan.footprintPlan!.removeC2pa) throw new Error('Removable footprints remain')
+    const final = parse(stage.data)
+    for (const key of ['format', 'width', 'height', 'alpha', 'orientation'] as const) if (initial[key] !== finalScan[key]) throw new Error('Original/final image properties changed')
+    if (await payloadHash(original.parts) !== stage.payloadHash || await payloadHash(final.parts) !== stage.payloadHash) throw new Error('Original/final payload changed')
+    plan.preserved = finalScan.records.map(r => r.id)
+    const status = after.evidence.length || after.incomplete ? 'PARTIALLY_REMOVED' : 'REMOVED_VERIFIED'
+    return { footprintResult: result(status, 'All performed stages verified; retained limitations remain explicit', after), output: { ...stage, scan: finalScan, retained: finalScan.records.length, removed, changedFields, checks } }
+  } catch {
+    // Never expose any intermediate or unverified output, even after stage one succeeds.
+    return { footprintResult: result('VERIFICATION_FAILED', 'Atomic operation failed; no output released') }
+  }
 }
 export async function verifyOutput(data: Uint8Array, output: Uint8Array, ids: string[], rightsConsent: boolean, mode: CleaningMode = 'safe'): Promise<CleanResult> {
   const before = parse(data)

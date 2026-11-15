@@ -26,6 +26,37 @@ docker run --rm -p 3000:3000 ai-footprint-web
 
 İki aşamalı Node 24 Alpine imajında `npm ci` ve derleme build aşamasındadır. Çalışma aşamasına yalnızca `dist` ve `server.mjs` kopyalanır; uygulama `node` kullanıcısı olarak çalışır. Çalışma zamanı npm bağımlılığı yoktur. İmaj etiketi hareketlidir; tekrarlanabilir üretim sürümü için doğrulanmış digest sabitlemesi ayrıca yapılmalıdır.
 
+## Birleşik görsel izi motoru ve sabit fixture ölçümü — 15 Kasım 2026
+
+`scanImage` ayrı `footprints` kanıt listesini ve `footprintPlan` planını üretir. `cleanFootprints(data, { c2paConsent, rightsConsent })` desteklenen üst düzey C2PA deposunu ve yalnız güvenle ayrılan üretim parametresi bloklarını tek doğrulanmış akışta işler. C2PA ve hak onayları ayrı boolean alanlarıdır; bir onay diğerinin yerine geçmez. Karışık EXIF/XMP, ICC ve orientation sessizce topluca kaldırılmaz. `REMOVED_VERIFIED` yalnız bu sınırlı metadata kapsamındaki işlemin doğrulanmasıdır; AI üretimi, imza doğrulaması, görünmez filigran veya tüm izlerin yokluğu anlamına gelmez. UI ve video bu API ölçümünün kapsamı dışındadır; aşağıdaki tarihsel arayüz raporları ayrı kanıtlardır.
+
+Geliştirme harness'i Node 24'te, `web/` içinden çalışır. Bağımlılık kurmaz; medya yalnız yeni geçici klasöre indirilir, çıktılar ve `report.json` aynı klasörde kalır:
+
+```powershell
+Test-Path -LiteralPath "C:\Users\Mert\AppData\Local\Temp\kilo"
+# Motoru yüklemeden hata kararlarını sınar; fixture/SDK erişimi yapmaz:
+node tests/footprints-fixtures.mjs --self-test
+node tests/footprints-fixtures.mjs --download
+# Motor kaynakları değişirken ölçüm çalıştırmayın.
+# Sonraki offline tekrar için raporlanan klasörü kullanın:
+node tests/footprints-fixtures.mjs --cache "RAPORLANAN_KLASÖR"
+```
+
+Harness yalnız `c2pa-org/public-testfiles@22beccc075707475b038d8789d0136c009e43143` ve `contentauth/c2pa-rs@0e92435c6d621c02c9bde2a8d82346295ed1f509` raw GitHub URL'lerini kullanır. Her kaynak için boyut, Git blob SHA-1 ve SHA-256; her çıktı için hash, motor kontrolleri ve bağımsız kapsayıcı yürüyüşüyle payload SHA-256 kaydedilir. 11 girdinin beklenen boyutu ve SHA-256 değeri harness içinde sabittir; indirilen ve cache'ten okunan baytlar taramadan önce doğrulanır. İndirme akışı sabit boyutu aşarsa durdurulur. `tests/c2pa-sdk-check.py` bütün kaynakları ve oluşan çıktıları mevcut `.venv` üzerinden ağ erişimi kapalı SDK ayarlarıyla ayrıca okur. SDK sonucu ürünün temizleme kararı değildir. Fixture hatası, eksik scan/result, beklenmeyen durum, kaynak veya payload değişimi, beklenen çıktının yokluğu, SDK çalıştırma/okuma hatası ve SDK'nın çıktıda manifest yokluğunu doğrulayamaması koşuyu sıfırdan farklı exit code ile bitirir. `BLOCKED` ve `NOTHING_TO_REMOVE` kontrollerinden çıktı beklenmez. `.venv`/SDK yokluğu başarılı ölçüm sayılmaz; bağımlılık otomatik kurulmaz.
+
+| Fixture | Motor sonucu | Gözlem |
+|---|---|---|
+| `adobe-20220124-A.jpg` | `BLOCKED` | Manifest yok; metadata incelemesi eksik, güvenle kaldırılabilir iz yok. |
+| `adobe-20220124-C.jpg`, `adobe-20220124-CA.jpg`, `adobe-20220124-E-dat-CA.jpg`, `adobe-20220124-E-sig-CA.jpg`, `adobe-20220124-E-uri-CA.jpg`, `adobe-20220124-E-clm-CAICAI.jpg` | `PARTIALLY_REMOVED` | Gömülü store ve tek yerel XMP provenance alanı kaldırıldı; kalan metadata incelemesi eksik. |
+| `truepic-20230212-camera.jpg` | `BLOCKED` | `BLOCKED_MALFORMED_METADATA`: EXIF yön bilgisi bozuk veya belirsiz. |
+| `exp-test1.png` | `PARTIALLY_REMOVED` | Gömülü store ve yerel XMP provenance alanı kaldırıldı; korunan ICC içeriği tam incelenmedi. |
+| `sample1.png` | `BLOCKED` | Manifest yok; metadata incelemesi eksik, güvenle kaldırılabilir iz yok. |
+| `sample1.webp` | `NOTHING_TO_REMOVE` | Desteklenen kapsamda kayıt yok; C2PA kaldırma testi sayılmaz. |
+
+Aşağıdaki sonuçların dış kanıtı `2026-11-15T14:48:21.264Z` tarihli yerel `C:\Users\Mert\AppData\Local\Temp\kilo\ai-footprint-deleter-2026-11-15T11-15-04-496Z-001db487-HRZMDV\report.json` dosyasıdır; rapor depoya dahil değildir. SDK `exitCode: 0` ve 18 okunabilir sonuç kaydı içerir. Bunlar inceleme düzeltmeleri sonrası motor snapshot'ının ölçümüdür; sonraki motor değişiklikleri yeniden `--cache` koşusu gerektirir. 11 dosyanın tamamı indirildi ve tarandı; 7 çıktı oluştu. Bu koşuda bütün kaynak dosyalar ve `src/*.ts` kaynak hash'leri değişmedi; 7 çıktının payload hash'i kaynak ve motor hash'iyle eşleşti. SDK `c2pa-python 0.38.0` / native `0.91.0` bütün girdileri okudu ve 7 çıktıda manifest bulmadı. İmzalı kaynakların tamamında trust `untrusted` idi; `E-sig` imza mismatch, `E-dat` dataHash mismatch, `E-uri`/`E-clm` hashedURI mismatch ve Truepic dataHash mismatch bildirdi. Bunlar yapısal motorun kaldırma engeli değildir; ürün kriptografik doğrulama yapmaz.
+
+Adobe dosyaları üretilmiş conformance örnekleridir; Truepic dosyası `Truepic_Lens_SDK_libc2pa/2.5.1` kamera SDK örneğidir, son kullanıcı orijinali diye sunulmaz. PNG/WebP dosyaları SDK fixture'larıdır. Public-testfiles listesi CC BY-SA 4.0 olarak belirtilmiştir; SDK medya lisansı çözümlenmediği için binary dosyalar yeniden dağıtılmaz ve depoya eklenmez. Bu ölçüm genel üretici uyumluluğu, Gemini başarısı, gerçek tarayıcı/Worker kabulü veya tüm AI izlerinin kaldırılması iddiası taşımaz.
+
 ## Railway
 
 Yayın halka açıktır: login, şifre, üyelik veya erişim kısıtı eklenmez. Medya yükleme endpoint'i, proxy veya analitik yoktur. Railway hesabına erişimi olan kişi aşağıdaki ayarları **Dashboard** üzerinden uygular; yeni servis `railway.toml` desteğine bağımlı değildir.

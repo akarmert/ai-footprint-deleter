@@ -1,5 +1,8 @@
 // Run with Playwright browser_run_code after npm run build and npm start.
 async page => {
+  const context = await page.context().browser().newContext();
+  page = await context.newPage();
+  try {
   const assert = (value, message) => { if (!value) throw new Error(message); };
   await page.goto('http://localhost:3000');
   const violations = [], requests = [];
@@ -29,6 +32,8 @@ async page => {
   assert(await page.locator('.dropzone').evaluate(element => element.classList.contains('dragging')), 'Drag highlight missing');
   await page.locator('.dropzone').dispatchEvent('drop', { dataTransfer: await page.evaluateHandle(() => window.dropData) });
   await page.getByText('Metadata taraması tamamlandı', { exact: true }).waitFor();
+  assert(!await page.locator('#advanced-tools').evaluate(element => element.open), 'Image advanced tools open by default');
+  await page.locator('#advanced-tools > summary').click();
   assert(await page.locator('.summary-counts').first().innerText().then(text => text.includes('Temizlenebilir')), 'Real summary missing');
   for (const width of [360, 390, 768, 1280]) {
     await page.setViewportSize({ width, height: 900 });
@@ -56,4 +61,7 @@ async page => {
   assert(violations.length === 0, `CSP violations: ${violations}`);
   assert(requests.every(request => request.method === 'GET' && request.body === null && /\/assets\/inspect.worker-[\w-]+\.js$/.test(request.url)), 'Unexpected request during file workflow');
   return { dragDrop: 'passed', longName: 'passed', menu: 'passed', consentEscape: 'passed', invalidReplacement: 'passed', reducedMotion: 'passed', viewports: [360, 390, 768, 1280], violations, requests };
+  } finally {
+    await context.close();
+  }
 }

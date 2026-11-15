@@ -1,4 +1,7 @@
 async (page) => {
+  const context = await page.context().browser().newContext();
+  page = await context.newPage();
+  try {
   const assert = (value, message) => { if (!value) throw new Error(message); };
   await page.goto('http://localhost:3000');
   const upload = async (ai, malformed = false, localReference = false) => {
@@ -20,6 +23,7 @@ async (page) => {
       const input=document.querySelector('#media');input.files=dt.files;input.dispatchEvent(new Event('change',{bubbles:true}));
     }, { ai, malformed, localReference });
     await page.getByText(/Metadata taraması tamamlandı|Tarama tamamlandı · Temizleme engellendi/,{exact:true}).waitFor();
+    const tools=page.locator('#advanced-tools');if(!await tools.evaluate(element=>element.open))await tools.locator(':scope > summary').click();
   };
   await upload(true);
   const results=page.locator('.metadata-results');
@@ -62,6 +66,9 @@ async (page) => {
   await remove.click();
   await dialog.getByRole('button',{name:'Yetkim var, yalnız C2PA’yı kaldır',exact:true}).click();
   await page.getByRole('button',{name:'C2PA Kaldırılmış Dosyayı İndir',exact:true}).waitFor();
+  assert(await page.locator('#footprint-title').innerText()==='Gelişmiş işlem çıktısı doğrulandı','C2PA output remains in scanning state');
+  assert(await results.locator('.panel-heading .chip').innerText()==='Temizlenmiş çıktı','C2PA output mislabeled as source');
+  assert(!await page.locator('.status').evaluate(element=>element.classList.contains('has-warning')),'Verified C2PA output shown as failure');
   assert(await page.getByText(/Diğer metadata korundu/).count()>0,'Retained metadata warning missing');
   assert(await page.getByRole('button',{name:"Metadata'yı Temizle",exact:true}).isDisabled(),'Source metadata action changed');
   await upload(true);
@@ -85,11 +92,14 @@ async (page) => {
     }),`Long value readability/selection ${width}`);
   }
   await upload(true,false,true);
-  assert(await page.getByText(/SUPPORTED_WITH_LOCAL_XMP_REFERENCE/).count()>0,'Local decision missing');
+  assert(await page.getByRole('status').getByText('Gömülü kaynak kaydı ve ona bağlı yerel işaretçi ayrı izinle kaldırılabilir.',{exact:true}).isVisible(),'Local decision missing');
   await remove.click();
   assert(await dialog.getByText(/yerel XMP provenance alanı/).count()>0,'Local XMP consent missing');
   await dialog.getByRole('button',{name:'Yetkim var, yalnız C2PA’yı kaldır',exact:true}).click();
   await page.getByRole('heading',{name:'Gömülü C2PA ve ilişkili yerel XMP işaretçisi kaldırıldı',exact:true}).waitFor();
+  assert(await page.locator('#footprint-title').innerText()==='Gelişmiş işlem çıktısı doğrulandı','Local XMP output remains in scanning state');
+  assert(await results.locator('.panel-heading .chip').innerText()==='Temizlenmiş çıktı','Local XMP output mislabeled as source');
+  assert(!await page.locator('.status').evaluate(element=>element.classList.contains('has-warning')),'Verified local XMP output shown as failure');
   assert(await page.locator('.verification').getByText(/Değiştirilen alan:/).count()===1,'Changed XMP field missing');
   assert(await page.getByRole('button',{name:"Metadata'yı Temizle",exact:true}).isDisabled(),'Local source metadata action unblocked');
   await upload(false);
@@ -105,7 +115,11 @@ async (page) => {
     const input=document.querySelector('#media');input.files=dt.files;input.dispatchEvent(new Event('change',{bubbles:true}));
   });
   await page.getByText(/Metadata taraması tamamlandı|Tarama tamamlandı · Temizleme engellendi/,{exact:true}).waitFor();
+  await page.locator('#advanced-tools > summary').click();
   assert(await results.getByRole('heading',{name:'AI üretim beyanı bulunamadı',exact:true}).count()===1,'Neutral state missing');
   await checkStatus('neutral','rgb(11, 18, 36)','rgb(245, 247, 252)',0);
   return {statusCard:'red / amber / neutral passed',syntheticC2pa:'passed',fragmented:'passed',aiStates:'passed',unverified:'passed',malformed:'passed',html:'escaped',viewports:[320,390,768,1320],realGemini:'NOT TESTED'};
+  } finally {
+    await context.close();
+  }
 }

@@ -1,6 +1,5 @@
-import { scanImage, cleanImage, cleanC2pa } from './engine';
+import { scanImage, cleanImage, cleanC2pa, cleanFootprints } from './engine';
 import { validateSelection } from './media';
-import { readC2pa } from './c2pa';
 import type { Request, Response } from './protocol';
 const scope = self as unknown as { onmessage: ((event: MessageEvent<Request>) => void) | null; postMessage: (result: Response) => void };
 let source: Uint8Array | undefined;
@@ -16,8 +15,16 @@ scope.onmessage = async ({ data }) => {
       source = new Uint8Array(await data.file.arrayBuffer());
       const scan = scanImage(source);
       if (scan.format !== format) throw new Error('Dosya uzantısı ve kapsayıcı formatı uyuşmuyor.');
-      const provenance = readC2pa(source, scan.format, scan.c2pa !== 'not-detected-not-guaranteed');
-      scope.postMessage({ type: 'scan', scan: { ...scan, provenance } });
+      scope.postMessage({ type: 'scan', scan });
+    } else if (data.type === 'clean-footprints') {
+      if (!source) throw new Error('Önce görseli yeniden tarayın.');
+      const { footprintResult, output } = await cleanFootprints(source, data);
+      if (!output) scope.postMessage({ type: 'clean-footprints', footprintResult });
+      else {
+        const { data: bytes, ...verified } = output;
+        const mime = { JPEG:'image/jpeg', PNG:'image/png', WebP:'image/webp' }[output.scan.format];
+        scope.postMessage({ type: 'clean-footprints', footprintResult, output: { ...verified, footprintResult, blob: new Blob([bytes as Uint8Array<ArrayBuffer>], { type: mime }) } });
+      }
     } else if (data.type === 'clean' || data.type === 'clean-c2pa') {
       if (!source) throw new Error('Önce görseli yeniden tarayın.');
       if (data.type === 'clean-c2pa' && data.c2paConsent !== true) throw new Error('C2PA kaldırma için açık onay gerekir.');

@@ -1,4 +1,7 @@
 async (page) => {
+  const context = await page.context().browser().newContext();
+  page = await context.newPage();
+  try {
   const assert = (condition, message) => { if (!condition) throw new Error(message); };
   await page.goto('http://localhost:3000');
   const upload = async (value, provenance = false) => {
@@ -14,10 +17,12 @@ async (page) => {
       const input = document.querySelector('#media'); input.files = data.files; input.dispatchEvent(new Event('change', { bubbles: true }));
     }, { value, provenance });
     await page.getByText(/Metadata taraması tamamlandı|Tarama tamamlandı · Temizleme engellendi/, { exact: true }).waitFor();
+    const tools = page.locator('#advanced-tools'); if (!await tools.evaluate(element => element.open)) await tools.locator(':scope > summary').click();
   };
   await upload('trainedAlgorithmicMedia; Applied SynthID watermark; prompt: landscape');
   const results = page.locator('.metadata-results');
-  assert(await results.getByRole('heading', { name: 'AI üretim beyanı bulunamadı', exact: true }).count() === 1, 'AI claim status missing');
+  assert(await results.getByRole('heading', { name: 'Provenance bulundu, AI durumu belirsiz', exact: true }).count() === 1, 'Metadata hint uncertainty missing');
+  assert(await results.getByText(/0 açık beyan kaynağı/).isVisible(), 'Metadata hint became an explicit AI claim');
   assert(await results.locator('.result-counts strong').nth(1).innerText() === '1', 'AI count incorrect');
   await results.getByRole('button', { name: 'Tümünü Aç', exact: true }).click();
   assert(await results.locator('.result-section:not([open])').count() === 0, 'Tümünü Aç failed');
@@ -41,4 +46,7 @@ async (page) => {
   assert(await results.locator('.result-counts strong').nth(1).innerText() === '0', 'C2PA must not imply AI');
   assert(await page.getByRole('button', { name: "Metadata'yı Temizle", exact: true }).isDisabled(), 'Provenance fail closed lost');
   return { aiClaim: 'passed', noAI: 'passed', provenance: 'unverified, blocked', categories: 'passed', expandCollapse: 'passed', layout: [1320, 390] };
+  } finally {
+    await context.close();
+  }
 }

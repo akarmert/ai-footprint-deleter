@@ -4,6 +4,8 @@ export interface XmpAnalysis {
   status: 'valid' | 'malformed' | 'unsupported'
   references: XmpReference[]
   projection: string
+  aiSources?: string[]
+  hints?: string[]
   reason?: string
 }
 const RDF = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#'
@@ -276,7 +278,33 @@ export function analyzeXmp(bytes: Uint8Array): XmpAnalysis {
       }
       return [node.name, node.attrs.filter(a => !omittedAttrs.has(a)).map(a => [a.name, a.value]).sort((a, b) => a[0]! < b[0]! ? -1 : a[0]! > b[0]! ? 1 : 0), children]
     }
-    return { status: 'valid', references, projection: JSON.stringify(project(root)) }
+    // Match expanded property names, never prefixes, vendor names or arbitrary XML text.
+    const aiSources: string[] = []
+    const sourceProperty = expanded('http://iptc.org/std/Iptc4xmpExt/2008-02-29/', 'DigitalSourceType')
+    const aiType = 'http://cv.iptc.org/newscodes/digitalsourcetype/trainedAlgorithmicMedia'
+    const sourceValues: string[] = []
+    const sourceAttrs = new Set<Attribute>(), sourceNodes = new Set<Element>()
+    for (const description of descriptions) {
+      for (const a of description.attrs) if (a.name === sourceProperty) { sourceValues.push(a.value); sourceAttrs.add(a) }
+      for (const property of elements(description)) if (property.name === sourceProperty) {
+        if (elements(property).length) unsupported('Structured DigitalSourceType')
+        const resource = property.attrs.find(a => a.name === expanded(RDF, 'resource'))
+        const text = property.children.join('')
+        if (property.attrs.some(a => a !== resource) || resource && !ws.test(text)) unsupported('Qualified or mixed DigitalSourceType')
+        sourceValues.push(resource ? resource.value : text.trim()); sourceNodes.add(property)
+      }
+    }
+    const hints = new Set<string>()
+    const inspectSources = (node: Element) => {
+      if (node.name === sourceProperty && !sourceNodes.has(node) || node.attrs.some(a => a.name === sourceProperty && !sourceAttrs.has(a))) unsupported('Nested DigitalSourceType')
+      const names = [node.name, ...node.attrs.map(a => a.name)]
+      if (names.some(n => /^(?:prompt|seed|negative_prompt|sampler(?:_name)?|cfg(?:_scale)?)$/i.test(JSON.parse(n)[1]))) hints.add('generation-parameters')
+      for (const child of elements(node)) inspectSources(child)
+    }
+    inspectSources(root)
+    if (sourceValues.length > 1 || sourceValues.some(value => !/^https?:\/\/\S+$/.test(value))) unsupported('Ambiguous DigitalSourceType')
+    if (sourceValues[0] === aiType) aiSources.push(aiType)
+    return { status: 'valid', references, projection: JSON.stringify(project(root)), aiSources, hints: [...hints] }
   } catch (error) {
     if (error instanceof Rejection) return { status: error.status, references: [], projection: '', reason: error.message }
     return { status: 'malformed', references: [], projection: '', reason: 'Invalid XMP' }

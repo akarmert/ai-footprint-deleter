@@ -1,5 +1,8 @@
 // Run with Playwright browser_run_code against npm run build + npm start.
 async page => {
+  const context = await page.context().browser().newContext();
+  page = await context.newPage();
+  try {
   const assert = (condition, message) => { if (!condition) throw new Error(message); };
   // The browser tool provides Playwright Library, not Playwright Test's expect.
   const toBeVisible = async locator => { await locator.waitFor({ state: 'visible' }); assert(await locator.isVisible(), `Not visible: ${locator}`); };
@@ -54,9 +57,10 @@ async page => {
     const input = document.querySelector('#media'); input.files = data.files; input.dispatchEvent(new Event('change', { bubbles: true }));
   });
   await toBeVisible(page.getByText('Metadata taraması tamamlandı', { exact: true }));
+  await page.locator('#advanced-tools > summary').click();
   assert(await page.locator('.category-filters button:disabled').count() === 0, 'Empty category controls remain');
   assert(await page.locator('.category-filters button').count() === 3, 'Expected only all, file and metadata filters');
-  assert(await page.locator('.actions').evaluate(element => Boolean(element.compareDocumentPosition(document.querySelector('.metadata-results')) & Node.DOCUMENT_POSITION_FOLLOWING)), 'Primary action follows the long results list');
+  assert(await page.locator('#advanced-tools .actions').evaluate(element => Boolean(element.compareDocumentPosition(document.querySelector('.metadata-results')) & Node.DOCUMENT_POSITION_FOLLOWING)), 'Primary action follows the long results list');
   await page.getByRole('button', { name: 'Tümünü Aç', exact: true }).click();
   const preview = page.locator('.result-fields pre').filter({ hasText: 'https://example.test/' });
   assert((await preview.innerText()) === 'https://example.test/' + 'a'.repeat(400), 'Long metadata value was truncated');
@@ -66,7 +70,7 @@ async page => {
     assert(await preview.evaluate(element => element.scrollWidth <= element.clientWidth + 1 && getComputedStyle(element).whiteSpace === 'pre-wrap'), `Metadata cannot wrap ${width}`);
   }
   await page.getByRole('button', { name: "Metadata'yı Temizle", exact: true }).click();
-  const dialog = page.getByRole('dialog');
+  const dialog = page.getByRole('dialog', { name: 'Hak ve telif bilgileri için onay', exact: true });
   await toBeVisible(dialog);
   assert(await dialog.evaluate(element => element.contains(document.activeElement)), 'Consent focus is outside dialog');
   await page.keyboard.press('Escape');
@@ -77,4 +81,7 @@ async page => {
   await page.setViewportSize({ width: 390, height: 900 });
   await page.screenshot({ path: 'C:/Users/Mert/AppData/Local/Temp/kilo-playwright/ui-audit-after-mobile.png', fullPage: true });
   return { viewports, menuEscape: 'passed', skipFocus: 'passed', footerLandmark: 'passed', technicalLimits: 'passed', faq: 'passed', visibility: 'Playwright waitFor visible + isVisible; expect package not installed', screenshots: 'before/after captured; repeated unmasked frames equal' };
+  } finally {
+    await context.close();
+  }
 }
