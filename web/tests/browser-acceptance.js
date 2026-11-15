@@ -5,6 +5,9 @@ async (page) => {
   const root = 'C:/_projectsmert/ai-footprint-deleter/web/tests/fixtures';
   const assert = (condition, message) => { if (!condition) throw new Error(message); };
   await page.goto('http://localhost:3000');
+  assert(await page.locator('.inspection-panel').count() === 0, 'Workspace exposed before file selection');
+  await page.locator('#media').setInputFiles(`${root}/image-1.png`);
+  await page.getByText('Metadata taraması tamamlandı', { exact: true }).waitFor();
   assert(await page.getByRole('button', { name: 'Güvenli Mod (Önerilen)', exact: true }).getAttribute('aria-pressed') === 'true', 'Safe mode not default');
   assert(await page.locator('.mode.active').innerText().then(text => text.includes('ICC')), 'Safe ICC policy missing');
   const cards = page.locator('button.mode');
@@ -54,8 +57,10 @@ async (page) => {
     await page.getByRole('button', { name: 'Seçimi kaldır', exact: true }).click();
     assert(await page.getByRole('button', { name: 'Temizlenmiş Dosyayı İndir', exact: true }).count() === 0, 'Cleared source retained output');
   }
+  await page.locator('#media').setInputFiles(`${root}/image-1.png`);
+  await page.getByText('Metadata taraması tamamlandı', { exact: true }).waitFor();
   await page.getByRole('button', { name: 'Kapsamlı Temizlik', exact: true }).click();
-  await page.getByText(/ICC kaldırılırsa renk yönetimi/).waitFor();
+  await page.getByText(/ICC kaldırılması renk yönetimini/).waitFor();
   for (const ext of ['jpg', 'png', 'webp']) {
     await page.locator('#media').setInputFiles(`${root}/image-1.${ext}`);
     await page.getByText('Metadata taraması tamamlandı', { exact: true }).waitFor();

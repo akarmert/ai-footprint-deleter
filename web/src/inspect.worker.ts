@@ -1,5 +1,5 @@
 import { scanImage, cleanImage } from './engine';
-import { IMAGE_LIMIT, validateSelection } from './media';
+import { validateSelection } from './media';
 import { readC2pa } from './c2pa';
 import type { Request, Response } from './protocol';
 const scope = self as unknown as { onmessage: ((event: MessageEvent<Request>) => void) | null; postMessage: (result: Response) => void };
@@ -13,7 +13,6 @@ scope.onmessage = async ({ data }) => {
       source = undefined;
       const format = validateSelection(data.file);
       if (format === 'MP4' || format === 'MOV') throw new Error('Video işleme Faz 2 kapsamında değil. JPEG, PNG veya WebP seçin.');
-      if (data.file.size > IMAGE_LIMIT) throw new Error('Görsel sınırı 128 MiB.');
       source = new Uint8Array(await data.file.arrayBuffer());
       const scan = scanImage(source);
       if (scan.format !== format) throw new Error('Dosya uzantısı ve kapsayıcı formatı uyuşmuyor.');

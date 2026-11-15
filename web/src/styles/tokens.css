@@ -1,0 +1,22 @@
+:root {
+  color-scheme: dark;
+  --night: #0B1224;
+  --blue: #4169E1;
+  --orange: #FF8C00;
+  --surface: #121D35;
+  --elevated: #192742;
+  --border: #2A3B58;
+  --text: #F5F7FC;
+  --secondary: #9CAAC2;
+  --blue-hover: #3456C2;
+  --focus: #A7BDFF;
+  --danger: #FFB4B4;
+  --danger-surface: #321E2C;
+  --warning-surface: #30261C;
+  --success: #A2DECB;
+  --success-surface: #142C30;
+  --active-surface: #182B55;
+  --radius: 16px;
+  --panel-radius: 24px;
+  --shadow: 0 12px 36px rgb(0 0 0 / 12%);
+}

@@ -5,13 +5,24 @@ import { stripTypeScriptTypes } from 'node:module';
 import { runInNewContext } from 'node:vm';
 import { scanImage, cleanImage } from './engine.ts';
 import { readC2pa } from './c2pa.ts';
-test('image Worker requires explicit valid mode and returns verified mode', async () => {
+import { validateSelection } from './media.ts';
+import type { Request, Response } from './protocol.ts';
+
+function imageWorker() {
   const source = readFileSync(new URL('./inspect.worker.ts', import.meta.url), 'utf8');
-  const messages: any[] = [];
-  const self: any = { postMessage: (value: any) => messages.push(value) };
-  runInNewContext(stripTypeScriptTypes(source.replace(/^import .*;\r?\n/gm, '')), { self, Uint8Array, Blob, IMAGE_LIMIT: 128 * 1024 * 1024, validateSelection: () => 'JPEG', scanImage, cleanImage, readC2pa });
-  const data = new Uint8Array(readFileSync(new URL('../tests/fixtures/image-1.jpg', import.meta.url)));
-  await self.onmessage({ data: { type: 'scan', file: { size: data.length, arrayBuffer: async () => data.buffer } } });
+  const messages: Response[] = [];
+  const self = {
+    onmessage: undefined as unknown as (event: { data: Request }) => Promise<void>,
+    postMessage: (value: Response) => messages.push(structuredClone(value)),
+  };
+  runInNewContext(stripTypeScriptTypes(source.replace(/^import .*;\r?\n/gm, '')), { self, Error, Uint8Array, Blob, validateSelection, scanImage, cleanImage, readC2pa });
+  return { self, messages };
+}
+
+test('image Worker requires explicit valid mode and returns verified mode', async () => {
+  const { self, messages } = imageWorker();
+  const file = new File([readFileSync(new URL('../tests/fixtures/image-1.jpg', import.meta.url))], 'image.jpg');
+  await self.onmessage({ data: { type: 'scan', file } });
   for (const mode of [undefined, 'invalid', null]) {
     await self.onmessage({ data: { type: 'clean', ids: [], rightsConsent: true, mode } });
     assert.equal(messages.at(-1).type, 'error');
@@ -19,6 +30,37 @@ test('image Worker requires explicit valid mode and returns verified mode', asyn
   await self.onmessage({ data: { type: 'clean', ids: [], rightsConsent: true, mode: 'comprehensive' } });
   assert.equal(messages.at(-1).output.mode, 'comprehensive');
 });
+test('image Worker rejects oversized images before reading bytes and invalidates previous source', async () => {
+  const { self, messages } = imageWorker();
+  const file = new File([readFileSync(new URL('../tests/fixtures/image-1.jpg', import.meta.url))], 'image.jpg');
+  await self.onmessage({ data: { type: 'scan', file } });
+  assert.equal(messages.at(-1)?.type, 'scan');
+  let reads = 0;
+  const oversized = { name: 'large.jpg', size: 134_217_729, arrayBuffer: async () => { reads++; return new ArrayBuffer(0); } } as File;
+  await self.onmessage({ data: { type: 'scan', file: oversized } });
+  assert.deepEqual(messages.at(-1), { type: 'error', message: 'Görsel sınırı 128 MiB.' });
+  assert.equal(reads, 0);
+  await self.onmessage({ data: { type: 'clean', ids: [], rightsConsent: true, mode: 'safe' } });
+  assert.deepEqual(messages.at(-1), { type: 'error', message: 'Önce görseli yeniden tarayın.' });
+});
+
+test('image Worker ignores concurrent requests until the current scan completes', async () => {
+  const { self, messages } = imageWorker();
+  const bytes = readFileSync(new URL('../tests/fixtures/image-1.jpg', import.meta.url));
+  let release!: (buffer: ArrayBuffer) => void;
+  const pending = new Promise<ArrayBuffer>(resolve => { release = resolve; });
+  const file = { name: 'image.jpg', size: bytes.length, arrayBuffer: () => pending } as File;
+  const scanning = self.onmessage({ data: { type: 'scan', file } });
+  await self.onmessage({ data: { type: 'clean', ids: [], rightsConsent: true, mode: 'safe' } });
+  assert.equal(messages.length, 0);
+  release(Uint8Array.from(bytes).buffer);
+  await scanning;
+  assert.equal(messages.length, 1);
+  assert.equal(messages[0].type, 'scan');
+  await self.onmessage({ data: { type: 'clean', ids: [], rightsConsent: true, mode: 'safe' } });
+  assert.equal(messages.at(-1)?.type, 'clean');
+});
+
 const encode = (text: string) => new TextEncoder().encode(text);
 const source = () => new Uint8Array(readFileSync(new URL('../tests/fixtures/progressive.jpg', import.meta.url)));
 const join = (...parts: Uint8Array[]) => { const out=new Uint8Array(parts.reduce((n,p)=>n+p.length,0));let pos=0;for(const p of parts){out.set(p,pos);pos+=p.length}return out; };

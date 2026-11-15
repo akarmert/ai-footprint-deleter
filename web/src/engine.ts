@@ -353,10 +353,12 @@ function parse(data: Uint8Array): Parsed {
   if (scan.format === 'JPEG' && profiles.length) {
     const first = profiles[0]!.payload, total = first[13]
     const valid = total === profiles.length && profiles.every((p, i) => p.payload.length > 14 && ascii(p.payload, 0, 12) === 'ICC_PROFILE\0' && p.payload[12] === i + 1 && p.payload[13] === total)
-    const joined = new Uint8Array(profiles.reduce((n, p) => n + Math.max(0, p.payload.length - 14), 0))
-    let offset = 0
-    for (const p of profiles) { joined.set(p.payload.subarray(14), offset); offset += Math.max(0, p.payload.length - 14) }
-    if (valid && validICC(joined)) for (const p of profiles) { p.record!.comprehensiveOnly = true; p.record!.reason = 'Doğrulanmış ICC; yalnız kapsamlı modda kaldırılabilir, renk yönetimi değişebilir' }
+    if (valid) {
+      const joined = new Uint8Array(profiles.reduce((n, p) => n + Math.max(0, p.payload.length - 14), 0))
+      let offset = 0
+      for (const p of profiles) { joined.set(p.payload.subarray(14), offset); offset += Math.max(0, p.payload.length - 14) }
+      if (validICC(joined)) for (const p of profiles) { p.record!.comprehensiveOnly = true; p.record!.reason = 'Doğrulanmış ICC; yalnız kapsamlı modda kaldırılabilir, renk yönetimi değişebilir' }
+    }
   } else if (scan.format === 'WebP') {
     for (const p of profiles) if (validICC(p.payload)) { p.record!.comprehensiveOnly = true; p.record!.reason = 'Doğrulanmış ICC; yalnız kapsamlı modda kaldırılabilir, renk yönetimi değişebilir' }
   }

@@ -2,12 +2,12 @@ import type { MediaScan } from './protocol';
 import type { MetadataRecord } from './engine';
 
 export const categories = [
-  { id: 'c2pa', label: 'C2PA', title: 'Content Authenticity (C2PA)' },
-  { id: 'file', label: 'File', title: 'File Information' },
-  { id: 'other', label: 'Other', title: 'Other Metadata' },
-  { id: 'privacy', label: 'Privacy', title: 'Privacy / Sensitive Metadata' },
-  { id: 'color', label: 'Color / ICC', title: 'Color / ICC Information' },
-  { id: 'production', label: 'Production', title: 'Production / Prompt Metadata' },
+  { id: 'c2pa', label: 'C2PA / Kaynak Bilgisi', title: 'C2PA / Kaynak Bilgisi' },
+  { id: 'file', label: 'Dosya Bilgileri', title: 'Dosya Bilgileri' },
+  { id: 'other', label: 'Diğer Metadata', title: 'Diğer Metadata' },
+  { id: 'privacy', label: 'Gizlilik Verileri', title: 'Gizlilik Verileri' },
+  { id: 'color', label: 'Renk Profili', title: 'Renk Profili' },
+  { id: 'production', label: 'AI / Üretim Beyanları', title: 'AI / Üretim Beyanları' },
 ] as const;
 export type Category = typeof categories[number]['id'];
 export type ResultField = { id: string; label: string; value: string; category: Category; ai: boolean; record?: MetadataRecord };

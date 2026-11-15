@@ -13,24 +13,24 @@ async (page) => {
       data.items.add(new File([bytes.slice(0, 2), segment, bytes.slice(2)], 'metadata-sample.jpg', { type: 'image/jpeg' }));
       const input = document.querySelector('#media'); input.files = data.files; input.dispatchEvent(new Event('change', { bubbles: true }));
     }, { value, provenance });
-    await page.getByText('Metadata taraması tamamlandı', { exact: true }).waitFor();
+    await page.getByText(/Metadata taraması tamamlandı|Tarama tamamlandı · Temizleme engellendi/, { exact: true }).waitFor();
   };
   await upload('trainedAlgorithmicMedia; Applied SynthID watermark; prompt: landscape');
   const results = page.locator('.metadata-results');
   assert(await results.getByRole('heading', { name: 'AI üretim beyanı bulunamadı', exact: true }).count() === 1, 'AI claim status missing');
   assert(await results.locator('.result-counts strong').nth(1).innerText() === '1', 'AI count incorrect');
-  await results.getByRole('button', { name: 'Expand all', exact: true }).click();
-  assert(await results.locator('.result-section:not([open])').count() === 0, 'Expand all failed');
+  await results.getByRole('button', { name: 'Tümünü Aç', exact: true }).click();
+  assert(await results.locator('.result-section:not([open])').count() === 0, 'Tümünü Aç failed');
   assert(await results.getByText(/Kaynak kaydında SynthID uygulandığı belirtiliyor/).isVisible(), 'SynthID source disclaimer missing');
-  await results.getByRole('button', { name: 'Collapse all', exact: true }).click();
-  assert(await results.locator('.result-section[open]').count() === 0, 'Collapse all failed');
-  await results.getByRole('button', { name: /^File / }).click();
+  await results.getByRole('button', { name: 'Tümünü Kapat', exact: true }).click();
+  assert(await results.locator('.result-section[open]').count() === 0, 'Tümünü Kapat failed');
+  await results.getByRole('button', { name: /^Dosya Bilgileri / }).click();
   assert(await results.locator('.result-section').count() === 1, 'Category filter failed');
   assert(await results.locator('.result-field').count() === 7, 'File category count incorrect');
   await results.getByRole('button', { name: /^Tümü / }).click();
   for (const width of [1320, 390]) {
     await page.setViewportSize({ width, height: 900 });
-    await results.getByRole('button', { name: 'Expand all', exact: true }).click();
+    await results.getByRole('button', { name: 'Tümünü Aç', exact: true }).click();
     assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `Overflow at ${width}`);
   }
   await upload('camera note: ordinary photograph');

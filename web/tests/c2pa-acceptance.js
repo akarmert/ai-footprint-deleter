@@ -18,7 +18,7 @@ async (page) => {
       const dt=new DataTransfer();dt.items.add(new File([jpeg.subarray(0,2),...parts,jpeg.subarray(2)],'c2pa-fixture.jpg',{type:'image/jpeg'}));
       const input=document.querySelector('#media');input.files=dt.files;input.dispatchEvent(new Event('change',{bubbles:true}));
     }, { ai, malformed });
-    await page.getByText('Metadata taraması tamamlandı',{exact:true}).waitFor();
+    await page.getByText(/Metadata taraması tamamlandı|Tarama tamamlandı · Temizleme engellendi/,{exact:true}).waitFor();
   };
   await upload(true);
   const results=page.locator('.metadata-results');
@@ -36,14 +36,14 @@ async (page) => {
       assert(await card.getByText(/Tespit edilememesi yokluk garantisi değildir/).isVisible(),`${state} caveat ${width}`);
     }
   };
-  await checkStatus('declared','rgb(255, 240, 238)','rgb(139, 41, 37)',1);
+  await checkStatus('declared','rgb(50, 30, 44)','rgb(255, 180, 180)',1);
   assert(await results.getByText('Bu beyan AI üretiminin kesin kanıtı veya doğrulanmış imza sonucu değildir.',{exact:true}).isVisible(),'Declaration caution missing');
   assert(await results.getByRole('heading',{name:'AI üretim beyanı bulundu',exact:true}).count()===1,'AI declaration missing');
-  await results.getByRole('button',{name:'Expand all',exact:true}).click();
+  await results.getByRole('button',{name:'Tümünü Aç',exact:true}).click();
   assert(await results.getByText('Fixture Generator <script>not executable</script>',{exact:true}).isVisible(),'Generator missing');
-  await results.getByRole('button',{name:'Collapse all',exact:true}).click();
+  await results.getByRole('button',{name:'Tümünü Kapat',exact:true}).click();
   assert(!await results.locator('.c2pa-reader').isVisible(),'C2PA collapse failed');
-  await results.getByRole('button',{name:/^File /}).click();
+  await results.getByRole('button',{name:/^Dosya Bilgileri /}).click();
   assert(await results.locator('.c2pa-reader').count()===0,'C2PA category filter failed');
   await results.getByRole('button',{name:/^C2PA /}).click();
   assert(await results.locator('.c2pa-reader').isVisible(),'C2PA expand failed');
@@ -54,8 +54,9 @@ async (page) => {
     await page.setViewportSize({width,height:1000});
     assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),`Overflow ${width}`);
     assert(await page.evaluate(()=>{
-      const sections=['.source-panel','.inspection-panel','.metadata-results','footer'].map(selector=>document.querySelector(selector));
-      return sections.every((element,index)=>index===0||sections[index-1].getBoundingClientRect().bottom<=element.getBoundingClientRect().top+1);
+       const sections=['.dropzone','.file-details','.inspection-panel','.site-footer'].map(selector=>document.querySelector(selector));
+       const results=document.querySelector('.metadata-results'), modes=document.querySelector('.cleaning-options');
+       return sections.every((element,index)=>index===0||sections[index-1].getBoundingClientRect().bottom<=element.getBoundingClientRect().top+1) && results.getBoundingClientRect().bottom<=modes.getBoundingClientRect().top+1;
     }),`Section order ${width}`);
     assert(await results.locator('.c2pa-reader p').evaluateAll(elements=>elements.every(element=>element.scrollWidth<=element.clientWidth+1)),`Metadata overflow ${width}`);
     assert(await page.evaluate(()=>{
@@ -68,7 +69,7 @@ async (page) => {
     }),`Long value readability/selection ${width}`);
   }
   await upload(false);
-  await checkStatus('uncertain','rgb(255, 246, 229)','rgb(128, 80, 15)',1);
+  await checkStatus('uncertain','rgb(48, 38, 28)','rgb(255, 140, 0)',1);
   assert(await results.getByRole('heading',{name:'Provenance bulundu, AI durumu belirsiz',exact:true}).count()===1,'Non AI provenance mislabeled');
   await upload(true,true);
   assert(await results.getByRole('heading',{name:'Provenance bulundu, AI durumu belirsiz',exact:true}).count()===1,'Malformed provenance mislabeled');
@@ -79,8 +80,8 @@ async (page) => {
     const dt=new DataTransfer();dt.items.add(new File([blob],'neutral-fixture.jpg',{type:'image/jpeg'}));
     const input=document.querySelector('#media');input.files=dt.files;input.dispatchEvent(new Event('change',{bubbles:true}));
   });
-  await page.getByText('Metadata taraması tamamlandı',{exact:true}).waitFor();
+  await page.getByText(/Metadata taraması tamamlandı|Tarama tamamlandı · Temizleme engellendi/,{exact:true}).waitFor();
   assert(await results.getByRole('heading',{name:'AI üretim beyanı bulunamadı',exact:true}).count()===1,'Neutral state missing');
-  await checkStatus('neutral','rgb(244, 246, 240)','rgb(32, 62, 56)',0);
+  await checkStatus('neutral','rgb(11, 18, 36)','rgb(245, 247, 252)',0);
   return {statusCard:'red / amber / neutral passed',syntheticC2pa:'passed',fragmented:'passed',aiStates:'passed',unverified:'passed',malformed:'passed',html:'escaped',viewports:[320,390,768,1320],realGemini:'NOT TESTED'};
 }

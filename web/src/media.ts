@@ -3,7 +3,6 @@ export const IMAGE_LIMIT = 128 * 1024 * 1024;
 export const READ_CHUNK = 64 * 1024;
 export type Format = 'JPEG' | 'PNG' | 'WebP' | 'MP4' | 'MOV';
 export interface Inspection { format: Format; bytesRead: number; scope: 'header-only' }
-export type WorkerResult = { type: 'result'; result: Inspection } | { type: 'error'; message: string };
 const extensions: Record<string, Format> = { jpg: 'JPEG', jpeg: 'JPEG', png: 'PNG', webp: 'WebP', mp4: 'MP4', mov: 'MOV' };
 export function validateSelection(file: Pick<File, 'name' | 'size'>): Format {
   const extension = file.name.split('.').pop()?.toLowerCase() ?? '';

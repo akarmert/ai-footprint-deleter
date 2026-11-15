@@ -1,6 +1,41 @@
-# AI Footprint Cleaner — 0.2.0b1 (Phase 2B)
+# AI Footprint Cleaner — Web
 
-## FFT / DCT / Radyal analiz kullanımı
+AI Footprint Cleaner'ın birincil ürünü `web/` dizinindeki tarayıcı uygulamasıdır. Web paketinin mevcut sürümü `web/package.json` içinde **0.1.0** olarak tanımlıdır. Medya tarayıcıdaki Worker içinde yerel işlenir; Node sunucusu yalnız derlenmiş statik içeriği sunar, medya yükleme veya işleme API'si içermez.
+
+## Web uygulamasını çalıştırma
+
+Node.js 24 ve npm ile `web/` dizininde çalıştırın:
+
+```sh
+npm ci
+npm run build
+npm start
+```
+
+Varsayılan adres `http://localhost:3000` olur; sunucu `PORT` ortam değişkenini destekler. Geliştirme sunucusu için `npm run dev`, otomatik testler için `npm test` kullanılır. Bu komutlar çalışma yönergesidir; bu dokümantasyon güncellemesinde çalıştırıldıkları iddia edilmez. Ayrıntılı kullanım, sınırlar ve Docker/Railway ayarları [web/README.md](web/README.md) içindedir.
+
+## Güncel web kapsamı ve mimari
+
+- JPEG, PNG ve WebP metadata taraması; desteklenen blokları yeniden kodlamadan kaldırma ve çıktıyı yeniden ayrıştırarak doğrulama.
+- Dar codec/kapsayıcı kapsamıyla MP4/MOV taraması ve doğrulanmış yerel disk çıktısı. Her video yapısı desteklenmez.
+- Önce dosya seçimi, ardından kademeli açılan analiz/temizleme alanları; lacivert zemin, mavi eylemler ve turuncu vurgularla modüler arayüz.
+- Varsayılan Güvenli Mod, açık seçimli Kapsamlı Temizlik ve gerektiğinde tek hak/telif onayı. Kapsamlı mod desteklenen JPEG/WebP ICC kayıtlarını kaldırabilir; PNG ICC korunur.
+- Metadata/C2PA kaynak beyanları salt okunur incelenir. Web kriptografik C2PA imza doğrulaması veya C2PA kaldırma yapmaz; mevcut ya da belirsiz provenance tüm temizlemeyi engeller. Metadata beyanı AI üretim kanıtı değildir; görünmez filigran veya tüm AI izlerini kaldırma garantisi yoktur.
+- React/TypeScript/Vite arayüzü `web/src/`, statik sunucu `web/server.mjs`, dağıtım tanımı `web/Dockerfile` içindedir. Python web çalışma zamanından bağımsızdır; Pillow web fixture üreticisinin geliştirme aracıdır, web runtime bağımlılığı değildir.
+
+## İleri geliştirme yönü
+
+Aktif geliştirme yalnız web ürününe yöneliktir: yerel işleme ve bütünlük sınırlarını korumak, dosya/analiz akışını iyileştirmek, gerçek dosyalarla format uyumluluğunu ve tarayıcı kabul kontrollerini genişletmek. Docker/Linux, native tarayıcı dosya seçicisi ve gerçek production kabulü gibi açık kapılar, geçmiş test sonuçlarından ayrı doğrulanmalıdır.
+
+**Windows masaüstü, EXE, PyInstaller paketleme ve installer geliştirmesi ileri planın dışındadır.** Yeni masaüstü dağıtımı, kod imzalama veya installer yol haritası yoktur. Python kodu, eski komutlar ve test/benchmark kanıtları silinmeden legacy/referans olarak korunur; web çalışma zamanının parçası değildir.
+
+---
+
+# Tarihsel legacy/referans — Masaüstü 0.2.0b1 (Phase 2B)
+
+**Aşağıdaki tüm bölümler eski Python/Qt masaüstü sürümünü ve dönemin kanıtlarını anlatır.** Sürüm, bağımlılık, test, benchmark ve dağıtım sonuçları güncel web sürümüne veya bugünün doğrulamasına ait değildir. Eski kullanım/derleme komutları yalnız tarihsel yeniden üretim ve referans içindir; aktif masaüstü geliştirme veya yayın talimatı değildir. Belgelerdeki faz adları ve tamamlanmamış işler geçmiş kapsamı kaydeder, yeni masaüstü taahhüdü oluşturmaz.
+
+## FFT / DCT / Radyal analiz kullanımı (tarihsel)
 
 Görseli açıp taramayı tamamlayın. **AI İz Analizi → FFT / DCT / Radyal** alt sekmesinde tile/window/mean seçerek frekans analizini başlatın. Y/Cb/Cr decodedkanalları,2DHannvarsayılanwindow, globalorigin8×8DCT ve hamgüçRAPSD hesaplanır. Kanal ve log/percentile/DC/sabitkontrast ayarları yalnız görünümü değiştirir; window/tile/mean değişimi yeniden analiz gerektirir. Son kaynakdoğrulama bitmeden100gösterilmez.
 
@@ -81,13 +116,13 @@ Geliştirme testleri:
 - Resmî `c2pa-python` Reader, SDK doğrulama bulguları ve manifest JSON. Çevrimiçi manifest/OCSP istekleri kapalı; ağ host listesi boş.
 - Çıktıyı tekrar açma; metadata kapsayıcıları, çözünürlük, mod/alpha, ICC, etkin orientation, birebir decoded pixel eşitliği ve sıkıştırılmış payload SHA256 eşitliği denetimi.
 - JSON analiz/işlem raporları, UTC işlem zamanı, kaldırılan/korunan kapsayıcılar.
-- Gelecek yetkili filigran dedektörleri için Protocol/registry; kurulu dedektör yoksa `Not Supported`.
+- Dönemin olası yetkili filigran dedektörleri için oluşturduğu Protocol/registry referansı; kurulu dedektör yoksa `Not Supported`. Aktif masaüstü dedektör geliştirme planı değildir.
 
 ## Açık sınırlamalar
 
 - TIFF temizliği yok; TIFF salt analizdir. Animasyon ve çok sayfalı görüntüler reddedilir.
 - JPEG C2PA kaldırma desteklenmez: genel JUMBF APP11 kayıtlarına zarar vermemek için korunur ve imzalı JPEG değişiklikleri engellenir. PNG/WebP desteklenen C2PA chunk'ları ancak SDK sonrası yokluk kontrolüyle kaldırılabilir.
-- EXIF Orientation 1 dışında ise EXIF silme engellenir; yönü koruyacak dönüştürme Faz 3'e bırakılmıştır.
+- EXIF Orientation 1 dışında ise EXIF silme engellenir; yönü koruyacak dönüştürme dönemin Faz 3 planında bırakılmış, uygulanmamış tarihsel bir hedeftir; aktif masaüstü planı değildir.
 - Privacy profilinin kapsamı kapsayıcı bazındadır: örneğin EXIF içindeki tarih/cihaz dışındaki alanlar da silinir. Üst grup silinirken alt alanların tümü kaybolur.
 - ExifTool henüz entegre değil. IPTC ve XMP tüm semantik alanlarıyla ayrıştırılmaz. Üretim parametreleri sadece dosyada mevcut metin olarak gösterilir; model/seed/prompt tahmini yapılmaz.
 - Bazı nadir metadata türleri / özel APP segmentleri silinmez. Uygulama tam anonimleştirme veya tüm kişisel bilgilerin kaldırıldığını garanti etmez.
@@ -96,16 +131,16 @@ Geliştirme testleri:
 - 128 MiB dosya / 40 megapiksel sınırı vardır; büyük dosyalarda birkaç görüntü kopyası nedeniyle bellek kullanımı yükselebilir. 1080p/4K/8K/39.992MP için gerçek Windows RAM ve UI benchmarkı yapıldı; sonuçlar ve bellek trade-off'u PERFORMANCE belgesindedir.
 - Önizleme renk yönetimi profesyonel ICC soft-proof değildir; temizlik ICC baytlarını korur.
 
-## Windows dağıtım yöntemi
+## Tarihsel Windows dağıtım yöntemi (aktif geliştirme dışı)
 
-Kaynak kökünde aşağıdaki komutlar çalıştırılır; `onedir` Qt LGPL yeniden bağlama/kitaplık değiştirme imkânını tek dosyaya göre kolaylaştırır:
+Aşağıdaki komutlar eski paketleme yönteminin kaydıdır; yeni EXE/PyInstaller/installer çalışması planlanmaz. Dönemin kaynak kökünde kullanılan `onedir` yöntemi Qt LGPL yeniden bağlama/kitaplık değiştirme imkânını tek dosyaya göre kolaylaştırır:
 
 ```powershell
 .\.venv\Scripts\python -m pip install pyinstaller==6.22.3
 .\.venv\Scripts\python -m PyInstaller --noconfirm --windowed --onedir --name AI-Footprint-Cleaner --add-data "assets;assets" --collect-all c2pa main.py
 ```
 
-Çıktı: `dist\AI-Footprint-Cleaner\AI-Footprint-Cleaner.exe`. v0.1.1 onedir EXE üretildi ve mevcut Windows11 geliştirme makinesinde gerçek `windows` Qt platformuyla görsel açma/tarama/temizleme/JSON smoke akışı çalıştırıldı. Temiz Windows makinesinde ve Windows10 üzerinde dağıtım testi yapılmadı; installer üretilmedi. Açık diagnostic modu: `AI-Footprint-Cleaner.exe --smoke-test <mevcut-boş-klasör>`; yalnız disposable fixture oluşturur, ağ kullanmaz. Qt DLL/pluginleri, c2pa DLL ve lisans bildirimleri dağıtıma dahil edilmeli. Windows 10/11 her ikisinde ayrı test, kod imzalama, SBOM ve installer geliştirme ticari yayın öncesi gerekir.
+Çıktı: `dist\AI-Footprint-Cleaner\AI-Footprint-Cleaner.exe`. v0.1.1 onedir EXE üretildi ve mevcut Windows11 geliştirme makinesinde gerçek `windows` Qt platformuyla görsel açma/tarama/temizleme/JSON smoke akışı çalıştırıldı. Temiz Windows makinesinde ve Windows10 üzerinde dağıtım testi yapılmadı; installer üretilmedi. Açık diagnostic modu: `AI-Footprint-Cleaner.exe --smoke-test <mevcut-boş-klasör>`; yalnız disposable fixture oluşturur, ağ kullanmaz. Qt DLL/pluginleri, c2pa DLL ve lisans bildirimleri dağıtıma dahil edilmeli. Dönemin ticari yayın değerlendirmesinde Windows 10/11 ayrı testleri, kod imzalama, SBOM ve installer eksik önkoşullar olarak kaydedilmişti; bu işler artık ileri geliştirme hedefi değildir.
 
 ## Mimari
 
@@ -119,7 +154,7 @@ Kaynak kökünde aşağıdaki komutlar çalıştırılır; `onedir` Qt LGPL yeni
 - `modules/watermark/registry.py`: yeni yetkili dedektörler için genişletme noktası.
 - `tests/unit/`, `tests/integration/`: yerel üretilen zararsız fixture'larla testler.
 
-Gelecek kalite/footprint/işleme modülleri Qt'ye bağımlı olmadan service katmanına bağlanmalıdır. Metadata temizleme ile filigran algılama farklı sözleşmelerdir. Yeni format desteği, C2PA/ICC/alpha koruma ve negatif testler eklenmeden etkinleştirilmemelidir.
+Tarihsel mimari notu, olası kalite/footprint/işleme modüllerini Qt'ye bağımlı olmadan service katmanına bağlamayı öngörüyordu; bu bir aktif masaüstü yol haritası değildir. Metadata temizleme ile filigran algılama farklı sözleşmelerdir. Referans güvenlik ilkesi olarak yeni format desteği, C2PA/ICC/alpha koruma ve negatif testler eklenmeden etkinleştirilmemelidir.
 
 ## Bağımlılık doğrulaması ve lisans
 
