@@ -1,6 +1,6 @@
 import { validateC2paStore, resolveLocalC2paReference } from './c2pa-structure.ts'
 import { analyzeXmp, removeXmpReference } from './xmp.ts'
-import { buildFootprints, classifyFootprintText, type FootprintRecordAnalysis, type FootprintReport, type FootprintPlan, type FootprintResult } from './footprints.ts'
+import { buildFootprints, classifyFootprintText, consentFootprintPlan, type FootprintRecordAnalysis, type FootprintReport, type FootprintPlan, type FootprintResult } from './footprints.ts'
 import { readC2pa } from './c2pa.ts'
 import type { C2paReport } from './c2pa-types.ts'
 
@@ -609,10 +609,11 @@ export async function cleanFootprints(data: Uint8Array, consent: { c2paConsent: 
   // No await before snapshot; all subsequent stages use privately owned bytes.
   parse(data)
   const source = data.slice()
-  const initial = scanImage(source), before = initial.footprints!, plan = initial.footprintPlan!
+  const initial = scanImage(source), before = initial.footprints!
+  const plan = consentFootprintPlan(initial, consent?.rightsConsent === true)
   const result = (status: FootprintResult['status'], reason: string, after?: FootprintReport): FootprintResult => ({ status, before, plan, reason, ...(after ? { after } : {}) })
   if (typeof consent?.c2paConsent !== 'boolean' || typeof consent?.rightsConsent !== 'boolean') return { footprintResult: result('BLOCKED', 'Invalid consent') }
-  if (plan.blocked || plan.requiresC2paConsent && !consent.c2paConsent || plan.requiresRightsConsent && !consent.rightsConsent) return { footprintResult: result('BLOCKED', 'Safety blocker or required separate consent missing') }
+  if (plan.blocked || plan.requiresC2paConsent && !consent.c2paConsent) return { footprintResult: result('BLOCKED', 'Safety blocker or required separate consent missing') }
   if (!plan.removeC2pa && !plan.metadataIds.length) return { footprintResult: result(before.evidence.length || before.incomplete ? 'BLOCKED' : 'NOTHING_TO_REMOVE', 'No safely removable footprint blocks') }
   try {
     let working: Uint8Array = source
@@ -625,14 +626,15 @@ export async function cleanFootprints(data: Uint8Array, consent: { c2paConsent: 
     // Reparse after C2PA edits: IDs and XMP bytes from the original scan are stale.
     const original = parse(source), target = parse(working)
     const expected = original.parts.filter(p => p.record && plan.metadataIds.includes(p.record.id))
-    const fresh = scanImage(working), freshPlan = fresh.footprintPlan!
+    const fresh = scanImage(working), freshPlan = consentFootprintPlan(fresh, consent.rightsConsent)
     const actual = target.parts.filter(p => p.record && freshPlan.metadataIds.includes(p.record.id))
     if (expected.length !== actual.length || expected.some((p, i) => p.kind !== actual[i]!.kind || !equal(source.subarray(p.start, p.end), working.subarray(actual[i]!.start, actual[i]!.end)))) throw new Error('Planned footprint targets changed')
     if (freshPlan.blocked || freshPlan.removeC2pa) throw new Error('Post-C2PA safety blocker')
     const stage = await cleanImage(working, freshPlan.metadataIds, consent.rightsConsent, 'safe')
     removed += stage.removed; checks.push(...stage.checks)
     const finalScan = scanImage(stage.data), after = finalScan.footprints!
-    if (finalScan.footprintPlan!.metadataIds.length || finalScan.footprintPlan!.removeC2pa) throw new Error('Removable footprints remain')
+    const finalPlan = consentFootprintPlan(finalScan, consent.rightsConsent)
+    if (finalPlan.metadataIds.length || finalPlan.removeC2pa) throw new Error('Removable footprints remain')
     const final = parse(stage.data)
     for (const key of ['format', 'width', 'height', 'alpha', 'orientation'] as const) if (initial[key] !== finalScan[key]) throw new Error('Original/final image properties changed')
     if (await payloadHash(original.parts) !== stage.payloadHash || await payloadHash(final.parts) !== stage.payloadHash) throw new Error('Original/final payload changed')

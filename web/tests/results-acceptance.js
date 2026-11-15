@@ -16,7 +16,7 @@ async (page) => {
       data.items.add(new File([bytes.slice(0, 2), segment, bytes.slice(2)], 'metadata-sample.jpg', { type: 'image/jpeg' }));
       const input = document.querySelector('#media'); input.files = data.files; input.dispatchEvent(new Event('change', { bubbles: true }));
     }, { value, provenance });
-    await page.getByText(/Metadata taraması tamamlandı|Tarama tamamlandı · Temizleme engellendi/, { exact: true }).waitFor();
+    await page.getByText(/Metadata taraması tamamlandı|Tarama tamamlandı · Temizlemeye hazır|Kaynak kaydı bulundu · Kaldırma desteklenmiyor/, { exact: true }).waitFor();
     const tools = page.locator('#advanced-tools'); if (!await tools.evaluate(element => element.open)) await tools.locator(':scope > summary').click();
   };
   await upload('trainedAlgorithmicMedia; Applied SynthID watermark; prompt: landscape');

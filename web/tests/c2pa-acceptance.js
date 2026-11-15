@@ -22,7 +22,7 @@ async (page) => {
       const dt=new DataTransfer();dt.items.add(new File([jpeg.subarray(0,2),...parts,jpeg.subarray(2)],'c2pa-fixture.jpg',{type:'image/jpeg'}));
       const input=document.querySelector('#media');input.files=dt.files;input.dispatchEvent(new Event('change',{bubbles:true}));
     }, { ai, malformed, localReference });
-    await page.getByText(/Metadata taraması tamamlandı|Tarama tamamlandı · Temizleme engellendi/,{exact:true}).waitFor();
+    await page.getByText(/Metadata taraması tamamlandı|Tarama tamamlandı · Temizlemeye hazır|Kaynak kaydı bulundu · Kaldırma desteklenmiyor/,{exact:true}).waitFor();
     const tools=page.locator('#advanced-tools');if(!await tools.evaluate(element=>element.open))await tools.locator(':scope > summary').click();
   };
   await upload(true);
@@ -92,7 +92,7 @@ async (page) => {
     }),`Long value readability/selection ${width}`);
   }
   await upload(true,false,true);
-  assert(await page.getByRole('status').getByText('Gömülü kaynak kaydı ve ona bağlı yerel işaretçi ayrı izinle kaldırılabilir.',{exact:true}).isVisible(),'Local decision missing');
+  assert(await page.getByRole('status').getByText('Gömülü kaynak kaydı ve ona bağlı yerel işaretçi Remove ile kaldırılabilir.',{exact:true}).isVisible(),'Local decision missing');
   await remove.click();
   assert(await dialog.getByText(/yerel XMP provenance alanı/).count()>0,'Local XMP consent missing');
   await dialog.getByRole('button',{name:'Yetkim var, yalnız C2PA’yı kaldır',exact:true}).click();
@@ -114,7 +114,7 @@ async (page) => {
     const dt=new DataTransfer();dt.items.add(new File([blob],'neutral-fixture.jpg',{type:'image/jpeg'}));
     const input=document.querySelector('#media');input.files=dt.files;input.dispatchEvent(new Event('change',{bubbles:true}));
   });
-  await page.getByText(/Metadata taraması tamamlandı|Tarama tamamlandı · Temizleme engellendi/,{exact:true}).waitFor();
+  await page.getByText(/Metadata taraması tamamlandı|Tarama tamamlandı · Temizlemeye hazır|Kaynak kaydı bulundu · Kaldırma desteklenmiyor/,{exact:true}).waitFor();
   await page.locator('#advanced-tools > summary').click();
   assert(await results.getByRole('heading',{name:'AI üretim beyanı bulunamadı',exact:true}).count()===1,'Neutral state missing');
   await checkStatus('neutral','rgb(11, 18, 36)','rgb(245, 247, 252)',0);

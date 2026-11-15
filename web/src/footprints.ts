@@ -14,6 +14,24 @@ export type FootprintPlan = { metadataIds: string[]; removeC2pa: boolean; requir
 export type FootprintStatus = 'REMOVED_VERIFIED' | 'PARTIALLY_REMOVED' | 'BLOCKED' | 'NOTHING_TO_REMOVE' | 'VERIFICATION_FAILED'
 export type FootprintResult = { status: FootprintStatus; before: FootprintReport; after?: FootprintReport; plan: FootprintPlan; reason: string }
 
+// Scan plans describe all candidates; execution plans describe only authorized changes.
+export function consentFootprintPlan(scan: Scan, rightsConsent: boolean): FootprintPlan {
+  const plan = scan.footprintPlan!
+  const retainedRights = plan.metadataIds.filter(id => scan.records.some(r => r.id === id && r.requiresRightsConsent) && !rightsConsent)
+  const metadataIds = plan.metadataIds.filter(id => !retainedRights.includes(id))
+  return {
+    ...plan, metadataIds,
+    requiresRightsConsent: metadataIds.some(id => scan.records.some(r => r.id === id && r.requiresRightsConsent)),
+    preserved: [...new Set([...plan.preserved, ...retainedRights])],
+    changes: footprintChanges(plan.removeC2pa, metadataIds.length > 0),
+    fullySupported: plan.fullySupported && !retainedRights.length,
+    reasons: [...plan.reasons, ...(retainedRights.length ? ['Ayrı hak onayı verilmediği için hak onayı gerektiren üretim parametresi blokları korunacak.'] : [])],
+  }
+}
+function footprintChanges(removeC2pa: boolean, removeMetadata: boolean): string[] {
+  return [...(removeC2pa ? ['Desteklenen gömülü C2PA deposu ve varsa eşleşen yerel XMP provenance alanı kaldırılacak.'] : []), ...(removeMetadata ? ['Yalnız tanınmış, ayrı üretim parametresi metin blokları kaldırılacak.'] : [])]
+}
+
 // Only full, bounded metadata enters detection. Preview is deliberately not an input.
 // Text identifies hints, not proof of AI generation. Only dedicated text blocks
 // are eligible; EXIF and XMP are never silently removed as whole blocks.
@@ -70,7 +88,7 @@ export function buildFootprints(scan: Scan, provenance: C2paReport): { footprint
     requiresRightsConsent: metadataIds.some(id => scan.records.find(r => r.id === id)?.requiresRightsConsent),
     unsupported: [...new Set(unsupported)], blocked,
     preserved: scan.records.filter(r => !metadataIds.includes(r.id) && !(removeC2pa && r.kind === 'C2PA / opaque provenance')).map(r => r.id),
-    changes: [...(removeC2pa ? ['Desteklenen gömülü C2PA deposu ve varsa eşleşen yerel XMP provenance alanı kaldırılacak.'] : []), ...(metadataIds.length ? ['Yalnız tanınmış, ayrı üretim parametresi metin blokları kaldırılacak.'] : [])],
+    changes: footprintChanges(removeC2pa, metadataIds.length > 0),
     impacts: ['Kaldırılan kaynak geçmişi ve üretim parametreleri çıktıda geri getirilemez; kaynak dosya değişmez.', 'ICC, EXIF orientation, kodlanmış görüntü ve ilgisiz metadata varsayılan olarak korunur.'],
     fullySupported: !blocked && !unsupported.length && !incomplete,
     reasons,

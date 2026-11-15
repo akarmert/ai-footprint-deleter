@@ -6,7 +6,7 @@ import type { MediaScan, Response, VerifiedOutput, VideoResponse } from './proto
 import { chooseOutput, chooseTemporaryDirectory, supportsDiskOutput } from './output';
 import { MetadataResults } from './MetadataResults';
 import { Header, Hero, HomeInformation, Footer } from './components/Home';
-import { ConsentDialog, C2paConsentDialog, FootprintConsentDialog } from './components/ConsentDialog';
+import { ConsentDialog, C2paConsentDialog } from './components/ConsentDialog';
 import type { FootprintResult } from './footprints';
 import { Atmosphere } from './components/Atmosphere';
 import { FileDropzone, FileDetails, CleaningModeSelector, ScanStatus, ScanSummary, VerificationResult, FootprintSummary, footprintStatuses, footprintReason } from './components/Workspace';
@@ -20,24 +20,21 @@ function App() {
   const [pendingConsent, setPendingConsent] = useState(false);
   const c2paConfirmation = useRef<HTMLDialogElement>(null);
   const [pendingC2paConsent, setPendingC2paConsent] = useState(false);
-  const footprintConfirmation = useRef<HTMLDialogElement>(null);
-  const [pendingFootprintConsent, setPendingFootprintConsent] = useState(false);
   const [footprintResult, setFootprintResult] = useState<FootprintResult>();
-  const operation = useRef<'metadata-consent' | 'c2pa-consent' | 'footprint-consent' | 'clean' | undefined>(undefined);
+  const operation = useRef<'metadata-consent' | 'c2pa-consent' | 'clean' | undefined>(undefined);
   const consentTrigger = useRef<HTMLElement | null>(null);
   const focusReturn = useRef<number | undefined>(undefined);
-  function finishConsent(kind: 'metadata-consent' | 'c2pa-consent' | 'footprint-consent') {
+  function finishConsent(kind: 'metadata-consent' | 'c2pa-consent') {
     if (operation.current === kind) { operation.current = undefined; focusReturn.current = generation.current; }
   }
-  function dismissFootprintConsent() { finishConsent('footprint-consent'); setPendingFootprintConsent(false); }
   function dismissConsent() { finishConsent('metadata-consent'); setPendingConsent(false); }
   function dismissC2paConsent() { finishConsent('c2pa-consent'); setPendingC2paConsent(false); }
   useEffect(() => {
-    if (pendingConsent || pendingC2paConsent || pendingFootprintConsent || focusReturn.current === undefined) return;
+    if (pendingConsent || pendingC2paConsent || focusReturn.current === undefined) return;
     const version = focusReturn.current;
     focusReturn.current = undefined;
     if (generation.current === version && !operation.current && consentTrigger.current?.isConnected) consentTrigger.current.focus();
-  }, [pendingConsent, pendingC2paConsent, pendingFootprintConsent]);
+  }, [pendingConsent, pendingC2paConsent]);
   const [mode, setMode] = useState<CleaningMode>('safe');
   function changeMode(next: CleaningMode) {
     if (busy || saving || committing || operation.current || output || footprintResult || videoDone) return;
@@ -80,7 +77,7 @@ function App() {
     worker.current = null; clearTimeout(timer.current);
   }
   useEffect(() => () => { stop(); revoke(); }, []);
-  function clear() { if (committingRef.current) return; cancelling.current = false; generation.current++; setVideoDone(false); setSaving(false); setUncertainCommit(false); stop(); revoke(); setFile(undefined); setTemporaryDirectory(undefined); setScan(undefined); setOutput(undefined);  confirmation.current?.close(); c2paConfirmation.current?.close(); operation.current = undefined; setPendingConsent(false); setPendingC2paConsent(false); footprintConfirmation.current?.close(); setPendingFootprintConsent(false); setFootprintResult(undefined); setBusy(''); setError(''); if (input.current) input.current.value = ''; }
+  function clear() { if (committingRef.current) return; cancelling.current = false; generation.current++; setVideoDone(false); setSaving(false); setUncertainCommit(false); stop(); revoke(); setFile(undefined); setTemporaryDirectory(undefined); setScan(undefined); setOutput(undefined);  confirmation.current?.close(); c2paConfirmation.current?.close(); operation.current = undefined; setPendingConsent(false); setPendingC2paConsent(false); setFootprintResult(undefined); setBusy(''); setError(''); if (input.current) input.current.value = ''; }
   function cancel() {
     if (committingRef.current) return;
     if (videoWorker.current && worker.current && busy) {
@@ -111,7 +108,7 @@ function App() {
     }, 120000);
   }
   function select(files: FileList | null) {
-    if ((videoWorker.current && busy) || committingRef.current || operation.current === 'metadata-consent' || operation.current === 'c2pa-consent' || operation.current === 'footprint-consent') return;
+    if ((videoWorker.current && busy) || committingRef.current || operation.current === 'metadata-consent' || operation.current === 'c2pa-consent') return;
     const list = files ? Array.from(files) : []; clear();
     if (!list.length) return;
     if (list.length !== 1) { setError('Bir seferde yalnız bir dosya seçin.'); return; }
@@ -168,22 +165,14 @@ function App() {
   const c2paRemovable = !!scan && (scan.format === 'JPEG' || scan.format === 'PNG' || scan.format === 'WebP') && scan.c2paRemovable === true;
   const imageScan = scan && 'footprintPlan' in scan ? scan : undefined;
   const footprintPlan = imageScan?.footprintPlan;
-  const confirming = pendingConsent || pendingC2paConsent || pendingFootprintConsent;
-  function removeFootprints(consent: { c2paConsent: boolean; rightsConsent: boolean }) {
-    if (!worker.current || !footprintPlan || busy || saving || committing || output || footprintResult || operation.current && operation.current !== 'footprint-consent') return;
-    if ((footprintPlan.requiresC2paConsent || footprintPlan.requiresRightsConsent) && operation.current !== 'footprint-consent') return;
-    if (footprintPlan.requiresC2paConsent && !consent.c2paConsent || footprintPlan.requiresRightsConsent && !consent.rightsConsent) return;
+  const confirming = pendingConsent || pendingC2paConsent;
+  const directMetadataIds = footprintPlan?.metadataIds.filter(id => !imageScan?.records.find(record => record.id === id)?.requiresRightsConsent) ?? [];
+  const directRemovable = !!footprintPlan && !footprintPlan.blocked && (footprintPlan.removeC2pa || directMetadataIds.length > 0);
+  function requestFootprints() {
+    if (!directRemovable || !worker.current || busy || saving || committing || operation.current || output || footprintResult) return;
     operation.current = 'clean';
     revoke(); setOutput(undefined); setFootprintResult(undefined); setError(''); setBusy('clean'); expire(worker.current);
-    worker.current.postMessage({ type: 'clean-footprints', ...consent });
-  }
-  function requestFootprints() {
-    if (!footprintPlan || footprintPlan.blocked || !footprintPlan.removeC2pa && !footprintPlan.metadataIds.length || !worker.current || busy || saving || committing || operation.current || output || footprintResult) return;
-    if (footprintPlan.requiresC2paConsent || footprintPlan.requiresRightsConsent) {
-      consentTrigger.current = document.activeElement as HTMLElement;
-      operation.current = 'footprint-consent'; setPendingFootprintConsent(true); footprintConfirmation.current?.showModal();
-      footprintConfirmation.current?.querySelector<HTMLButtonElement>('.dialog-actions button')?.focus();
-    } else removeFootprints({ c2paConsent: false, rightsConsent: false });
+    worker.current.postMessage({ type: 'clean-footprints', c2paConsent: true, rightsConsent: false });
   }
   function requestC2paRemoval() {
     if (!c2paRemovable || !worker.current || busy || saving || committing || operation.current || output) return;
@@ -234,7 +223,9 @@ function App() {
     revoke(); const url = URL.createObjectURL(output.blob); downloadURL.current = url;
     const link = document.createElement('a'); link.href = url;
     const base = file.name.replace(/\.[^.]*$/, '').replace(/[\\/:*?"<>|\x00-\x1f]/g, '_').slice(0,120) || 'gorsel';
-    link.download = `${base}-${output.operation === 'c2pa-store-removal' ? 'c2pa-kaldirildi' : 'temiz'}.${output.scan.format === 'JPEG' ? 'jpg' : output.scan.format.toLowerCase()}`;
+    const originalExtension = file.name.match(/\.(jpe?g|png|webp)$/i)?.[1];
+    const extension = output.footprintResult && originalExtension ? originalExtension : output.scan.format === 'JPEG' ? 'jpg' : output.scan.format.toLowerCase();
+    link.download = `${base}-${output.footprintResult ? 'removed' : output.operation === 'c2pa-store-removal' ? 'c2pa-kaldirildi' : 'temiz'}.${extension}`;
     link.click();
   }
   const displayedScan = output?.scan ?? scan;
@@ -245,7 +236,6 @@ function App() {
     <Atmosphere paused={!!busy || saving || committing} />
     <ConsentDialog dialog={confirmation} mode={mode} dismiss={dismissConsent} confirm={() => void clean(true)} />
     <C2paConsentDialog dialog={c2paConfirmation} dismiss={dismissC2paConsent} confirm={removeC2pa} />
-    <FootprintConsentDialog dialog={footprintConfirmation} plan={footprintPlan} dismiss={dismissFootprintConsent} confirm={removeFootprints} />
     <a className="skip-link" href="#workspace">Dosya analizine geç</a>
     <Header />
     <main>
@@ -263,7 +253,7 @@ function App() {
               committingRef.current = false; setCommitting(false); clear();
               setError('Disk sonucu belirsiz olarak izleme bırakıldı; bu iptal/geri alma garantisi değildir. Hedefi kontrol edin ve geçici site verilerini temizleyin.');
             }}>Belirsiz sonucu kabul et ve seçimi sıfırla</button>}
-          {!videoWorker.current && file && <>{output && !displayedImageScan ? <section className="footprint-summary"><h3 id="footprint-title">Gelişmiş işlem çıktısı doğrulandı</h3><p>Çıktı metadata kayıtları ve bütünlük açısından yeniden tarandı. Bu gelişmiş işlem için yeni AI kaynak analizi sonucu üretilmedi; tüm AI izlerinin kaldırıldığı söylenemez.</p></section> : <FootprintSummary report={output ? displayedImageScan?.footprints : imageScan?.footprints} plan={output ? displayedImageScan?.footprintPlan : footprintPlan} result={footprintResult} />}<div className="actions"><button className="primary" id="remove-footprints" onClick={requestFootprints} disabled={!footprintPlan || !!busy || saving || committing || confirming || footprintPlan.blocked || !footprintPlan.removeC2pa && !footprintPlan.metadataIds.length || !!output || !!footprintResult}>Remove AI Footprint</button></div></>}
+          {!videoWorker.current && file && <>{output && !displayedImageScan ? <section className="footprint-summary"><h3 id="footprint-title">Gelişmiş işlem çıktısı doğrulandı</h3><p>Çıktı metadata kayıtları ve bütünlük açısından yeniden tarandı. Bu gelişmiş işlem için yeni AI kaynak analizi sonucu üretilmedi; tüm AI izlerinin kaldırıldığı söylenemez.</p></section> : <FootprintSummary report={output ? displayedImageScan?.footprints : imageScan?.footprints} plan={output ? displayedImageScan?.footprintPlan : footprintPlan} result={footprintResult} />}<div className="actions"><button className="primary" id="remove-footprints" onClick={requestFootprints} disabled={!directRemovable || !!busy || saving || committing || confirming || !!output || !!footprintResult}>Remove AI Footprint</button></div><p className="scan-note">Remove, desteklenen gömülü C2PA kaynak kayıtlarını ve güvenle ayrılabilen AI metadata'sını kaldırır. Kaynak dosya korunur.</p><p className="scan-note">Ayrı hak/telif izni gerektiren bağımsız metadata kayıtları korunur. Bu kayıtlar için Teknik Ayrıntılar ve Gelişmiş Araçlar bölümündeki onaylı metadata temizliğini kullanabilirsin.</p></>}
           {output?.footprintResult && <VerificationResult output={output} videoDone={false} videoRemoved={0} total={scan?.records.length ?? 0} download={download} />}
           <div className="actions"><button className="text-button" disabled={committing || confirming || cancelling.current && !!busy || !file && !error} onClick={busy ? cancel : clear}>{busy ? 'İptal et' : 'Seçimi kaldır'}</button></div>
           {scan && <details className="metadata" id="advanced-tools" key={generation.current} open={videoWorker.current}><summary>{videoWorker.current ? 'Gelişmiş Araçlar · Video metadata' : 'Teknik Ayrıntılar ve Gelişmiş Araçlar'}</summary>

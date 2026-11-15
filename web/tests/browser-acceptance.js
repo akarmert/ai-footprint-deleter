@@ -100,31 +100,50 @@ async (page) => {
   const storage = await page.evaluate(async () => ({ local: localStorage.length, session: sessionStorage.length, databases: (await indexedDB.databases()).length }));
   assert(Object.values(storage).every(count => count === 0), 'Unexpected persistent storage');
 
-  // Real worker with delayed delivery exposes source-change/cancel races deterministically.
+  // Hold real worker replies until each cancel/source-change action has completed.
   await page.reload();
   await page.evaluate(() => {
     const Actual = Worker;
     window.testWorkers = [];
+    window.holdWorkerMessages = true;
+    window.releaseWorkerMessages = () => {
+      window.holdWorkerMessages = false;
+      for (const worker of window.testWorkers) {
+        for (const event of worker.pending.splice(0)) worker.onmessage?.(event);
+      }
+    };
     window.Worker = class {
       constructor(url, options) {
+        this.pending = [];
         this.real = new Actual(url, options); window.testWorkers.push(this);
-        this.real.onmessage = event => setTimeout(() => this.onmessage?.(event), 250);
+        this.real.onmessage = event => {
+          if (window.holdWorkerMessages) this.pending.push(event);
+          else this.onmessage?.(event);
+        };
       }
       postMessage(message) { this.real.postMessage(message); }
       terminate() { this.real.terminate(); this.terminated = true; }
     };
   });
   await page.locator('input[type=file]').setInputFiles(`${root}/image-1.png`);
+  await page.waitForFunction(() => window.testWorkers[0]?.pending.length > 0);
   await page.getByRole('button', { name: 'İptal et', exact: true }).click();
   await page.getByRole('alert').waitFor().catch(error => { throw new Error(`Scan cancellation alert missing: ${error.message}`); });
   await page.locator('input[type=file]').setInputFiles(`${root}/image-1.png`);
+  await page.waitForFunction(() => window.testWorkers[1]?.pending.length > 0);
   await page.locator('input[type=file]').setInputFiles(`${root}/image-1.webp`);
+  await page.waitForFunction(() => window.testWorkers[2]?.pending.length > 0);
+  await page.evaluate(() => window.releaseWorkerMessages());
   await page.getByText('Metadata taraması tamamlandı', { exact: true }).waitFor();
   await openAdvanced();
   assert(await page.locator('.filename').innerText() === 'image-1.webp', 'Stale scan replaced current file');
+  await page.evaluate(() => { window.holdWorkerMessages = true; });
   await page.getByRole('button', { name: "Metadata'yı Temizle", exact: true }).click();
   await page.getByRole('button', { name: 'Yetkim var, temizle', exact: true }).click();
+  await page.waitForFunction(() => window.testWorkers[2]?.pending.length > 0);
   await page.getByRole('button', { name: 'İptal et', exact: true }).click();
+  await page.getByRole('alert').waitFor();
+  await page.evaluate(() => window.releaseWorkerMessages());
   assert(await page.getByRole('button', { name: 'Temizlenmiş Dosyayı İndir', exact: true }).count() === 0, 'Canceled output downloadable');
   assert(await page.evaluate(() => window.testWorkers.every(worker => worker.terminated)), 'Worker not terminated');
   for (const mode of ['timeout', 'onerror', 'onmessageerror']) {
@@ -169,7 +188,7 @@ async (page) => {
     data.items.add(new File([bytes.slice(0, 2), new Uint8Array([255,235,0,8,99,50,112,97,0,0]), bytes.slice(2)], 'provenance.jpg', { type: 'image/jpeg' }));
     const input = document.querySelector('#media'); input.files = data.files; input.dispatchEvent(new Event('change', { bubbles: true }));
   });
-  await page.getByText('Tarama tamamlandı · Temizleme engellendi', { exact: true }).waitFor();
+  await page.getByText('Kaynak kaydı bulundu · Kaldırma desteklenmiyor', { exact: true }).waitFor();
   await openAdvanced();
   await page.locator('#advanced-tools').getByText(/metadata temizliği engellendi/).waitFor();
   assert(await page.getByRole('button', { name: "Metadata'yı Temizle", exact: true }).isDisabled(), 'Provenance cleanup enabled');

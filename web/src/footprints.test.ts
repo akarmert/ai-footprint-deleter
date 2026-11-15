@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { cleanFootprints, scanImage, cleanImage } from './engine.ts'
-import { buildFootprints, classifyFootprintText } from './footprints.ts'
+import { buildFootprints, classifyFootprintText, consentFootprintPlan } from './footprints.ts'
 import { validateC2paStore, resolveLocalC2paReference } from './c2pa-structure.ts'
 import { removeXmpReference } from './xmp.ts'
 import { stripTypeScriptTypes } from 'node:module'
@@ -35,7 +35,7 @@ test('combined JPEG removes C2PA local pointer then fresh text IDs, preserving u
   const copy = data.slice(), scan = scanImage(data)
   assert.equal(scan.footprintPlan!.removeC2pa, true)
   assert.equal(scan.footprintPlan!.metadataIds.length, 1)
-  for (const c of [{ c2paConsent: false, rightsConsent: true }, { c2paConsent: true, rightsConsent: false }]) {
+  for (const c of [{ c2paConsent: false, rightsConsent: true }, { c2paConsent: false, rightsConsent: false }]) {
     const denied = await cleanFootprints(data, c); assert.equal(denied.footprintResult.status, 'BLOCKED'); assert.equal(denied.output, undefined)
   }
   const result = await cleanFootprints(data, consent)
@@ -47,6 +47,71 @@ test('combined JPEG removes C2PA local pointer then fresh text IDs, preserving u
   assert.ok(decoded.includes('Copyright retained')); assert.equal(decoded.includes('self#jumbf='), false); assert.equal(decoded.includes('ComfyUI'), false)
   assert.equal(result.output!.payloadHash, (await cleanImage(original, [], false)).payloadHash)
   assert.deepEqual(data, copy)
+})
+
+test('direct C2PA removal preserves full independent rights text and unrelated local XMP bytes', async () => {
+  const base = fixture('image-6.jpg')
+  const text = 'AI parameters: ComfyUI prompt: ' + 'x'.repeat(700)
+  const retainedXml = xml('t:note="unchanged"')
+  const retained = jpg(jpg(base, 254, bytes(text)), 225, xmp(retainedXml))
+  const data = jpg(jpg(jpg(base, 254, bytes(text)), 225, xmp(xml('t:note="unchanged" d:provenance="self#jumbf=/c2pa/manifest/c2pa.claim"'))), 235, app11(store()))
+  const copy = data.slice(), initial = scanImage(data)
+  const rights = initial.records.find(r => r.kind === 'Comment')!
+  assert.equal(rights.requiresRightsConsent, true)
+  assert.deepEqual(initial.footprintPlan!.metadataIds, [rights.id])
+  const result = await cleanFootprints(data, { c2paConsent: true, rightsConsent: false })
+  assert.equal(result.footprintResult.status, 'PARTIALLY_REMOVED')
+  assert.ok(result.output)
+  assert.deepEqual(result.output.data, retained)
+  assert.deepEqual(data, copy)
+  assert.equal(result.output.removed, 1)
+  assert.equal(result.output.payloadHash, (await cleanImage(base, [], false)).payloadHash)
+  assert.equal(result.output.scan.c2pa, 'not-detected-not-guaranteed')
+  assert.ok(result.footprintResult.after!.evidence.some(e => e.source === 'ComfyUI'))
+  const plan = result.footprintResult.plan
+  assert.deepEqual(plan.metadataIds, [])
+  assert.equal(plan.blocked, false)
+  assert.equal(plan.requiresRightsConsent, false)
+  assert.equal(plan.fullySupported, false)
+  assert.ok(plan.reasons.some(reason => reason.includes('hak onayı')))
+  assert.equal(plan.changes.length, 1)
+  assert.deepEqual(plan.preserved, result.output.scan.records.map(r => r.id))
+  assert.equal(plan.unsupported.includes(rights.id), false)
+})
+
+test('direct C2PA authorization works for JPEG PNG WebP and rejects missing or invalid consent', async () => {
+  for (const [base, data] of [
+    [fixture('progressive.jpg'), jpg(fixture('progressive.jpg'), 235, app11(store()))],
+    [fixture('palette.png'), png(fixture('palette.png'), 'caBX', store())],
+    [fixture('image-6.webp'), webp(fixture('image-6.webp'), 'C2PA', store())],
+  ]) {
+    const copy = data!.slice()
+    for (const c2paConsent of [false, undefined, 'true', 1]) {
+      const denied = await cleanFootprints(data!, { c2paConsent, rightsConsent: false } as any)
+      assert.equal(denied.footprintResult.status, 'BLOCKED')
+      assert.equal(denied.output, undefined)
+    }
+    const result = await cleanFootprints(data!, { c2paConsent: true, rightsConsent: false })
+    assert.ok(result.output)
+    assert.deepEqual(result.output.data, base)
+    assert.equal(result.output.payloadHash, (await cleanImage(base!, [], false)).payloadHash)
+    assert.deepEqual(data, copy)
+  }
+})
+
+test('rights-only dedicated metadata without rights consent returns no output and stays preserved', async () => {
+  for (const data of [jpg(fixture('progressive.jpg'), 254, bytes('AI parameters: ComfyUI prompt: cat')), png(fixture('palette.png'), 'tEXt', bytes('parameters\0ComfyUI prompt: cat'))]) {
+    const copy = data.slice(), scan = scanImage(data)
+    assert.equal(scan.footprintPlan!.requiresRightsConsent, true)
+    const result = await cleanFootprints(data, { c2paConsent: true, rightsConsent: false })
+    assert.equal(result.footprintResult.status, 'BLOCKED')
+    assert.equal(result.output, undefined)
+    assert.deepEqual(result.footprintResult.plan.metadataIds, [])
+    assert.deepEqual(result.footprintResult.plan.changes, [])
+    assert.ok(result.footprintResult.plan.preserved.includes(scan.footprintPlan!.metadataIds[0]!))
+    assert.deepEqual(data, copy)
+    assert.ok((await cleanFootprints(data, consent)).output)
+  }
 })
 
 test('full bounded PNG text detection beyond 512 preview and exact dedicated block removal', async () => {
@@ -158,10 +223,12 @@ test('external and duplicate local references block the entire unified operation
     let data = jpg(jpg(fixture('progressive.jpg'), 235, app11(store())), 225, xmp(xml(attrs)))
     if (!attrs.includes('https:')) data = jpg(data, 225, xmp(xml(attrs)))
     data = jpg(data, 254, bytes('AI parameters: ComfyUI'))
-    const result = await cleanFootprints(data, consent)
-    assert.equal(result.footprintResult.status, 'BLOCKED')
-    assert.equal(result.output, undefined)
-    assert.equal(result.footprintResult.plan.blocked, true)
+    for (const rightsConsent of [false, true]) {
+      const result = await cleanFootprints(data, { c2paConsent: true, rightsConsent })
+      assert.equal(result.footprintResult.status, 'BLOCKED')
+      assert.equal(result.output, undefined)
+      assert.equal(result.footprintResult.plan.blocked, true)
+    }
   }
 })
 
@@ -251,7 +318,7 @@ test('fresh target mismatch rejects atomic output instead of silently changing t
   let calls = 0
   const isolated = runInNewContext(stripTypeScriptTypes(engine.replace(/^import .*\r?\n/gm, '').replace(/\bexport /g, '')) + '\ncleanFootprints', {
     Uint8Array, Uint32Array, DataView, TextDecoder, TextEncoder, SharedArrayBuffer, crypto: globalThis.crypto,
-    validateC2paStore, resolveLocalC2paReference, analyzeXmp, removeXmpReference, readC2pa, classifyFootprintText,
+    validateC2paStore, resolveLocalC2paReference, analyzeXmp, removeXmpReference, readC2pa, classifyFootprintText, consentFootprintPlan,
     buildFootprints: (...args: Parameters<typeof buildFootprints>) => {
       const report = buildFootprints(...args)
       if (++calls === 2) report.footprintPlan.metadataIds = []
