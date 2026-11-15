@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
-import { scanImage, cleanImage, verifyOutput, isRemovable } from './engine.ts'
+import { scanImage, cleanImage, cleanC2pa, verifyOutput, isRemovable } from './engine.ts'
 const fixture = (name: string): Uint8Array => new Uint8Array(readFileSync(new URL(`../tests/fixtures/${name}`, import.meta.url)))
 const concat = (...parts: Uint8Array[]): Uint8Array => { const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0)); let pos = 0; for (const p of parts) { out.set(p, pos); pos += p.length } return out }
 const bytes = (s: string) => new TextEncoder().encode(s)
@@ -116,4 +116,58 @@ test('invalid UTF8, entities and nonUTF8 declarations block opaque XMP', async (
 test('provenance detection precedes oversized/raw/compressed text guards', async () => { for (const payload of [bytes('Comment\0' + 'x'.repeat(1024 * 1024 + 10) + 'c2pa'), bytes('raw profile type exif\0c2pa'), bytes('XML:com.adobe.xmp\0c2pa')]) { const data = pngInsert(fixture('palette.png'), 'tEXt', payload); assert.equal(scanImage(data).c2pa, 'detected-not-verified'); await assert.rejects(cleanImage(data, [], true)) } const compressed = pngInsert(fixture('palette.png'), 'zTXt', concat(bytes('XML:com.adobe.xmp\0'), new Uint8Array([0, 120, 156, 0]))); assert.equal(scanImage(compressed).cleaningBlocked, true); await assert.rejects(cleanImage(compressed, [], true)) })
 test('independent verification rejects malicious retained payload and metadata bytes', async () => { const original = fixture('image-1.png'), ids = scanImage(original).records.filter(r => r.kind === 'PNG text').map(r => r.id), good = (await cleanImage(original, ids, true)).data; assert.equal((await verifyOutput(original, good, ids, true)).removed, ids.length); for (const kind of ['IDAT', 'iCCP']) { const bad = good.slice(); for (let p = 8; p < bad.length;) { const n = new DataView(bad.buffer).getUint32(p); if (String.fromCharCode(...bad.subarray(p + 4, p + 8)) === kind) { bad[p + 8 + n - 1]! ^= 1; new DataView(bad.buffer).setUint32(p + 8 + n, crc(bad.subarray(p + 4, p + 8 + n))); break } p += n + 12 } await assert.rejects(verifyOutput(original, bad, ids, true), /baytları/) } await assert.rejects(verifyOutput(original, good, [], true)); await assert.rejects(verifyOutput(original, good, ids, false)) })
 test('hash rejection never returns a verified result', async () => { const digest = globalThis.crypto.subtle.digest; globalThis.crypto.subtle.digest = (() => Promise.reject(new Error('fixture hash failure'))) as typeof digest; try { await assert.rejects(cleanImage(fixture('palette.png'), [], true), /fixture hash failure/) } finally { globalThis.crypto.subtle.digest = digest } })
+function jumbBox(type: string, payload: Uint8Array): Uint8Array { const out = new Uint8Array(8 + payload.length); new DataView(out.buffer).setUint32(0, out.length); out.set(bytes(type), 4); out.set(payload, 8); return out }
+function c2paStore(): Uint8Array { const uuid = new Uint8Array([0x63, 0x32, 0x70, 0x61, 0, 0x11, 0, 0x10, 0x80, 0, 0, 0xaa, 0, 0x38, 0x9b, 0x71]); const manifestUuid = uuid.slice(); manifestUuid[2] = 0x6d; return jumbBox('jumb', concat(jumbBox('jumd', concat(uuid, new Uint8Array([3]), bytes('c2pa\0'))), jumbBox('jumb', concat(jumbBox('jumd', concat(manifestUuid, new Uint8Array([3]), bytes('manifest\0'))), jumbBox('cbor', new Uint8Array([0xa0])))))) }
+function app11(store: Uint8Array, sequence = 1, fragment = store.subarray(8)): Uint8Array { const header = new Uint8Array(8); header.set([74, 80, 0, 1]); new DataView(header.buffer).setUint32(4, sequence); return concat(header, store.subarray(0, 8), fragment) }
+for (const ext of ['jpg', 'png', 'webp']) test(`${ext} C2PA-only atomic removal preserves all other bytes and rejects normal cleaning`, async () => {
+  const original = fixture(`image-6.${ext}`), store = c2paStore()
+  const data = ext === 'jpg' ? jpgInsert(original, 235, app11(store)) : ext === 'png' ? pngInsert(original, 'caBX', store) : webpInsert(original, 'C2PA', store)
+  const copy = data.slice(), scan = scanImage(data)
+  assert.equal(scan.c2paRemovable, true); assert.equal(scan.cleaningBlocked, true)
+  for (const consent of [false, undefined, 'true', 1]) await assert.rejects(cleanC2pa(data, consent as boolean), /onay/)
+  await assert.rejects(cleanImage(data, [], true)); await assert.rejects(verifyOutput(data, original, [], true))
+  const result = await cleanC2pa(data, true)
+  assert.deepEqual(result.data, original); assert.deepEqual(data, copy); assert.equal(result.operation, 'c2pa-store-removal'); assert.equal(result.removed, 1)
+  assert.equal(result.scan.cleaningBlocked, false); assert.equal(result.scan.c2pa, 'not-detected-not-guaranteed'); assert.equal(result.scan.orientation, 6)
+  assert.equal(result.payloadHash, (await cleanImage(original, [], false)).payloadHash)
+})
+test('C2PA removal rejects mixed independent blockers regardless of metadata order', async () => {
+  const base = jpgInsert(fixture('progressive.jpg'), 235, app11(c2paStore()))
+  for (const payload of [bytes('unknown APP1'), bytes('http://ns.adobe.com/xap/1.0/\0<x>&opaque;</x>'), bytes('http://ns.adobe.com/xap/1.0/\0<dcterms : provenance>remote</dcterms : provenance>')]) {
+    const data = jpgInsert(base, 225, payload); assert.equal(scanImage(data).c2paRemovable, false); await assert.rejects(cleanC2pa(data, true))
+  }
+  for (const [kind, payload] of [['zTXt', new Uint8Array([65, 0, 0, 120, 156, 0])], ['tEXt', bytes('raw profile type exif\0hidden')], ['tEXt', bytes('Comment\0' + 'x'.repeat(1024 * 1024 + 1))], ['tEXt', bytes('Comment\0dcterms:provenance')]] as const) {
+    const data = pngInsert(pngInsert(fixture('palette.png'), kind, payload), 'caBX', c2paStore()); assert.equal(scanImage(data).c2paRemovable, false); await assert.rejects(cleanC2pa(data, true))
+  }
+})
+test('JPEG XMP self JUMBF pointer is an independent blocker, not a second APP11 store part', async () => {
+  const original = fixture('progressive.jpg')
+  // Literal XMP pointer pattern observed in the official legacy Adobe JPEG; no source media is distributed.
+  const xmp = bytes('http://ns.adobe.com/xap/1.0/\0<x:xmpmeta><rdf:RDF><rdf:Description xmlns:dcterms="http://purl.org/dc/terms/" dcterms:provenance="self#jumbf=/c2pa/contentauth:urn:uuid:4d971750-1db4-4492-a87c-5c3e7ed33efc/c2pa.claim"/></rdf:RDF></x:xmpmeta>')
+  const supported = jpgInsert(original, 235, app11(c2paStore()))
+  assert.equal(scanImage(supported).c2paRemovable, true)
+  for (const data of [jpgInsert(supported, 225, xmp), jpgInsert(jpgInsert(original, 225, xmp), 235, app11(c2paStore()))]) {
+    const scan = scanImage(data)
+    assert.equal(scan.records.filter(r => r.kind === 'C2PA / opaque provenance').length, 2)
+    assert.equal(scan.cleaningBlocked, true); assert.equal(scan.c2paRemovable, false)
+    await assert.rejects(cleanC2pa(data, true), /diğer provenance/)
+    await assert.rejects(cleanImage(data, [], true), /provenance/)
+  }
+})
+test('C2PA store rejects malformed UUID/length, duplicate and misplaced containers', async () => {
+  const store = c2paStore(), wrong = store.slice(); wrong[16]! ^= 1
+  const badLength = store.slice(); new DataView(badLength.buffer).setUint32(0, 1)
+  const png = fixture('palette.png'), webp = fixture('lossless.webp'), jpg = fixture('progressive.jpg')
+  const segment = jpgInsert(new Uint8Array([255, 216]), 235, app11(store)).subarray(2)
+  for (const data of [pngInsert(png, 'caBX', wrong), pngInsert(png, 'caBX', badLength), pngInsert(pngInsert(png, 'caBX', store), 'caBX', store), concat(png.subarray(0, png.length - 12), pngChunk('caBX', store), png.subarray(png.length - 12)), webpInsert(webpInsert(webp, 'C2PA', store), 'C2PA', store), webpInsert(webpInsert(webp, 'C2PA', store), 'zzzz', bytes('a')), jpgInsert(jpg, 235, app11(store, 2)), jpgInsert(jpg, 235, app11(store, 1, store.subarray(8, 20))), jpgInsert(jpgInsert(jpg, 235, app11(store)), 226, bytes('MPF\0test')), concat(jpg.subarray(0, jpg.length - 2), segment, jpg.subarray(jpg.length - 2)), concat(jpgInsert(jpg, 235, app11(store)).subarray(0, jpgInsert(jpg, 235, app11(store)).length - 2), segment, jpg.subarray(jpg.length - 2))]) {
+    assert.equal(scanImage(data).c2paRemovable, false); await assert.rejects(cleanC2pa(data, true))
+  }
+})
+test('JPEG split APP11 store is all-or-nothing, consistent and contiguous', async () => {
+  const store = c2paStore(), jpg = fixture('progressive.jpg'), split = 30
+  const good = jpgInsert(jpgInsert(jpg, 235, app11(store, 2, store.subarray(split))), 235, app11(store, 1, store.subarray(8, split)))
+  assert.equal(scanImage(good).c2paRemovable, true); const result = await cleanC2pa(good, true); assert.equal(result.removed, 2); assert.deepEqual(result.data, jpg)
+  const separated = jpgInsert(jpgInsert(jpgInsert(jpg, 235, app11(store, 2, store.subarray(split))), 254, bytes('gap')), 235, app11(store, 1, store.subarray(8, split)))
+  assert.equal(scanImage(separated).c2paRemovable, false); await assert.rejects(cleanC2pa(separated, true))
+})
 test('preview and count limits', () => { const data = pngInsert(fixture('palette.png'), 'tEXt', bytes('Comment\0' + 'x'.repeat(10000))); assert.ok(scanImage(data).records.every(r => r.preview.length <= 512)); let many = fixture('palette.png'); const chunk = pngChunk('vpAg', new Uint8Array()); many = concat(many.subarray(0, 33), ...Array.from({ length: 4096 }, () => chunk), many.subarray(33)); assert.throws(() => scanImage(many), /sayısı/) })

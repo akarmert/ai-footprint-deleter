@@ -6,7 +6,7 @@ import type { MediaScan, Response, VerifiedOutput, VideoResponse } from './proto
 import { chooseOutput, chooseTemporaryDirectory, supportsDiskOutput } from './output';
 import { MetadataResults } from './MetadataResults';
 import { Header, Hero, HomeInformation, Footer } from './components/Home';
-import { ConsentDialog } from './components/ConsentDialog';
+import { ConsentDialog, C2paConsentDialog } from './components/ConsentDialog';
 import { Atmosphere } from './components/Atmosphere';
 import { FileDropzone, FileDetails, CleaningModeSelector, ScanStatus, ScanSummary, VerificationResult } from './components/Workspace';
 import './style.css';
@@ -17,9 +17,14 @@ function App() {
   const [output, setOutput] = useState<VerifiedOutput>();
   const confirmation = useRef<HTMLDialogElement>(null);
   const [pendingConsent, setPendingConsent] = useState(false);
+  const c2paConfirmation = useRef<HTMLDialogElement>(null);
+  const [pendingC2paConsent, setPendingC2paConsent] = useState(false);
+  const operation = useRef<'metadata-consent' | 'c2pa-consent' | 'clean' | undefined>(undefined);
+  function dismissConsent() { if (operation.current === 'metadata-consent') operation.current = undefined; setPendingConsent(false); }
+  function dismissC2paConsent() { if (operation.current === 'c2pa-consent') operation.current = undefined; setPendingC2paConsent(false); }
   const [mode, setMode] = useState<CleaningMode>('safe');
   function changeMode(next: CleaningMode) {
-    if (busy || saving || committing || pendingConsent) return;
+    if (busy || saving || committing || operation.current) return;
     revoke(); setOutput(undefined); setVideoDone(false); setMode(next);
   }
   const [error, setError] = useState('');
@@ -59,7 +64,7 @@ function App() {
     worker.current = null; clearTimeout(timer.current);
   }
   useEffect(() => () => { stop(); revoke(); }, []);
-  function clear() { if (committingRef.current) return; cancelling.current = false; generation.current++; setVideoDone(false); setSaving(false); setUncertainCommit(false); stop(); revoke(); setFile(undefined); setTemporaryDirectory(undefined); setScan(undefined); setOutput(undefined);  confirmation.current?.close(); setPendingConsent(false); setBusy(''); setError(''); if (input.current) input.current.value = ''; }
+  function clear() { if (committingRef.current) return; cancelling.current = false; generation.current++; setVideoDone(false); setSaving(false); setUncertainCommit(false); stop(); revoke(); setFile(undefined); setTemporaryDirectory(undefined); setScan(undefined); setOutput(undefined);  confirmation.current?.close(); c2paConfirmation.current?.close(); operation.current = undefined; setPendingConsent(false); setPendingC2paConsent(false); setBusy(''); setError(''); if (input.current) input.current.value = ''; }
   function cancel() {
     if (committingRef.current) return;
     if (videoWorker.current && worker.current && busy) {
@@ -90,7 +95,7 @@ function App() {
     }, 120000);
   }
   function select(files: FileList | null) {
-    if ((videoWorker.current && busy) || committingRef.current) return;
+    if ((videoWorker.current && busy) || committingRef.current || operation.current === 'metadata-consent' || operation.current === 'c2pa-consent') return;
     const list = files ? Array.from(files) : []; clear();
     if (!list.length) return;
     if (list.length !== 1) { setError('Bir seferde yalnız bir dosya seçin.'); return; }
@@ -116,7 +121,7 @@ function App() {
           return;
         }
         committingRef.current = false; setCommitting(false); setUncertainCommit(false); cancelling.current = false;
-        clearTimeout(timer.current); setBusy('');
+        clearTimeout(timer.current); operation.current = undefined; setBusy('');
         if ('cleanupWarning' in data && data.cleanupWarning) setError(data.cleanupWarning);
         else if (data.type !== 'error') setError('');
         if (data.type === 'cancelled') { clear(); setError(data.cleanupWarning || 'İşlem iptal edildi; disk yazımı tamamlanmadı.'); return; }
@@ -138,15 +143,31 @@ function App() {
   }
   const eligible = scan?.cleaningBlocked ? [] : scan?.records.filter(record => isRemovable(record, scan.format === 'MP4' || scan.format === 'MOV' ? 'safe' : mode)) ?? [];
   const needsConsent = eligible.some(record => record.requiresRightsConsent || record.kind === 'ICC');
+  const c2paRemovable = !!scan && (scan.format === 'JPEG' || scan.format === 'PNG' || scan.format === 'WebP') && scan.c2paRemovable === true;
+  const confirming = pendingConsent || pendingC2paConsent;
+  function requestC2paRemoval() {
+    if (!c2paRemovable || !worker.current || busy || saving || committing || operation.current || output) return;
+    operation.current = 'c2pa-consent';
+    setPendingC2paConsent(true); c2paConfirmation.current?.showModal();
+  }
+  function removeC2pa() {
+    if (operation.current !== 'c2pa-consent' || !c2paRemovable || !worker.current || busy || saving || committing || output) return;
+    operation.current = 'clean';
+    revoke(); setOutput(undefined); setVideoDone(false); setError(''); setBusy('clean'); expire(worker.current);
+    worker.current.postMessage({ type: 'clean-c2pa', c2paConsent: true });
+  }
   function requestClean() {
-    if (!eligible.length || busy || saving || pendingConsent) return;
+    if (!eligible.length || busy || saving || committing || operation.current || output || videoDone) return;
     if (needsConsent) {
+      operation.current = 'metadata-consent';
       setPendingConsent(true); confirmation.current?.showModal();
     } else void clean(false);
   }
   async function clean(consent: boolean) {
-    if (!worker.current || !scan || !eligible.length || scan.cleaningBlocked || saving || busy) return;
-    if (needsConsent && !consent) return;
+    if (!worker.current || !scan || !eligible.length || scan.cleaningBlocked || saving || busy || committing || output || videoDone) return;
+    if (operation.current && operation.current !== 'metadata-consent') return;
+    if (needsConsent && (!consent || operation.current !== 'metadata-consent')) return;
+    operation.current = 'clean';
     const selected = eligible.map(record => record.id);
     const active = worker.current, version = generation.current;
     revoke(); setOutput(undefined); setVideoDone(false); setError('');
@@ -163,7 +184,7 @@ function App() {
         active.postMessage({ type:'clean', ids:selected, rightsConsent:consent, mode });
       }
     } catch (cause) {
-      if (generation.current === version) { setBusy(''); setError(cause instanceof Error ? cause.message : 'Çıktı seçilemedi.'); }
+      if (generation.current === version) { operation.current = undefined; setBusy(''); setError(cause instanceof Error ? cause.message : 'Çıktı seçilemedi.'); }
     } finally { if (generation.current === version) setSaving(false); }
   }
   function download() {
@@ -171,19 +192,20 @@ function App() {
     revoke(); const url = URL.createObjectURL(output.blob); downloadURL.current = url;
     const link = document.createElement('a'); link.href = url;
     const base = file.name.replace(/\.[^.]*$/, '').replace(/[\\/:*?"<>|\x00-\x1f]/g, '_').slice(0,120) || 'gorsel';
-    link.download = `${base}-temiz.${output.scan.format === 'JPEG' ? 'jpg' : output.scan.format.toLowerCase()}`;
+    link.download = `${base}-${output.operation === 'c2pa-store-removal' ? 'c2pa-kaldirildi' : 'temiz'}.${output.scan.format === 'JPEG' ? 'jpg' : output.scan.format.toLowerCase()}`;
     link.click();
   }
   const preserved = (scan?.records.length ?? 0) - eligible.length;
   return <div className="shell">
     <Atmosphere paused={!!busy || saving || committing} />
-    <ConsentDialog dialog={confirmation} mode={mode} dismiss={() => setPendingConsent(false)} confirm={() => void clean(true)} />
+    <ConsentDialog dialog={confirmation} mode={mode} dismiss={dismissConsent} confirm={() => void clean(true)} />
+    <C2paConsentDialog dialog={c2paConfirmation} dismiss={dismissC2paConsent} confirm={removeC2pa} />
     <a className="skip-link" href="#workspace">Dosya analizine geç</a>
     <Header />
     <main>
       <Hero />
       <div className="workspace" id="workspace" tabIndex={-1}>
-        <FileDropzone input={input} dragging={dragging} disabled={!supported || videoWorker.current && !!busy || committing} setDragging={setDragging} select={select} />
+        <FileDropzone input={input} dragging={dragging} disabled={!supported || videoWorker.current && !!busy || committing || confirming} setDragging={setDragging} select={select} />
         {!supported && <p className="error" role="alert">Web Workers desteklenmiyor. Güncel bir tarayıcı kullan.</p>}
         {file && <FileDetails file={file} scan={scan} />}
         {(file || error) && <>
@@ -195,9 +217,9 @@ function App() {
               committingRef.current = false; setCommitting(false); clear();
               setError('Disk sonucu belirsiz olarak izleme bırakıldı; bu iptal/geri alma garantisi değildir. Hedefi kontrol edin ve geçici site verilerini temizleyin.');
             }}>Belirsiz sonucu kabul et ve seçimi sıfırla</button>}
-          {scan && <><ScanSummary total={scan.records.length} removable={eligible.length} preserved={preserved} />{scan.cleaningBlocked ? <p className="warning">Kaynak/imza kaydı mevcut, belirsiz veya yapı güvenle işlenemiyor: tüm temizleme engellendi. C2PA kaldırma ve imza doğrulama desteklenmiyor.</p> : !eligible.length ? <p className="warning">{scan.records.length ? 'Kaldırılabilecek metadata bulunamadı. Renk profili, görüntü yönü veya desteklenmeyen kayıtlar güvenlik için korunuyor.' : 'Desteklenen metadata kaydı bulunamadı; temizlenecek kayıt yok. Bu, tüm metadata’nın yokluğu garantisi değildir.'}</p> : <p className="scan-note">Temizlenecek kayıtlar seçilen moda göre belirlenir. Hak/telif bilgisi için gerektiğinde onay istenir.</p>}</>}
-          {scan && <CleaningModeSelector mode={mode} disabled={!!busy || saving || committing || pendingConsent} changeMode={changeMode} video={scan.format === 'MP4' || scan.format === 'MOV'} />}
-          <div className="actions"><button className="primary" onClick={requestClean} disabled={!scan || !!busy || saving || pendingConsent || !eligible.length || !!output || videoDone}>Metadata'yı Temizle</button><button className="text-button" disabled={committing || cancelling.current && !!busy || !file && !error} onClick={busy ? cancel : clear}>{busy ? 'İptal et' : 'Seçimi kaldır'}</button></div>
+          {scan && <><ScanSummary total={scan.records.length} removable={eligible.length} preserved={preserved} />{scan.cleaningBlocked ? <p className="warning">Kaynak/imza kaydı mevcut, belirsiz veya yapı güvenle işlenemiyor: metadata temizliği engellendi. Yalnız desteklenen gömülü C2PA deposu için ayrı kaldırma düğmesi sunulur. İmza doğrulama yapılmaz.</p> : !eligible.length ? <p className="warning">{scan.records.length ? 'Kaldırılabilecek metadata bulunamadı. Renk profili, görüntü yönü veya desteklenmeyen kayıtlar güvenlik için korunuyor.' : 'Desteklenen metadata kaydı bulunamadı; temizlenecek kayıt yok. Bu, tüm metadata’nın yokluğu garantisi değildir.'}</p> : <p className="scan-note">Temizlenecek kayıtlar seçilen moda göre belirlenir. Hak/telif bilgisi için gerektiğinde onay istenir.</p>}</>}
+          {scan && <CleaningModeSelector mode={mode} disabled={!!busy || saving || committing || confirming} changeMode={changeMode} video={scan.format === 'MP4' || scan.format === 'MOV'} />}
+          <div className="actions"><button className="primary" onClick={requestClean} disabled={!scan || !!busy || saving || committing || confirming || !eligible.length || !!output || videoDone}>Metadata'yı Temizle</button>{c2paRemovable && <button onClick={requestC2paRemoval} disabled={!!busy || saving || committing || confirming || !!output}>Yalnız C2PA’yı Kaldır</button>}<button className="text-button" disabled={committing || confirming || cancelling.current && !!busy || !file && !error} onClick={busy ? cancel : clear}>{busy ? 'İptal et' : 'Seçimi kaldır'}</button></div>
           <VerificationResult output={output} videoDone={videoDone} videoRemoved={videoRemoved} total={scan?.records.length ?? 0} download={download} />
           {scan && file && <MetadataResults key={`${file.name}:${file.lastModified}:${file.size}`} scan={scan} file={file} />}
           {scan && <details className="metadata"><summary>Temizleme politikası ve doğrulama ayrıntıları</summary><div>{scan.records.map(record => <article className="record" key={record.id}><div className="record-heading"><strong>{record.kind}</strong><span>{eligible.some(item => item.id === record.id) ? record.requiresRightsConsent ? 'Yetki onayıyla' : 'Temizlenebilir' : 'Korunur'} · {record.bytes.toLocaleString('tr-TR')} bayt</span></div><p>{record.reason}</p>{record.preview && <pre>{record.preview}</pre>}</article>)}</div>{output && <details><summary>Payload SHA-256</summary><code>{output.payloadHash}</code></details>}</details>}

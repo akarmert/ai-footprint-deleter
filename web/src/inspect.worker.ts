@@ -1,4 +1,4 @@
-import { scanImage, cleanImage } from './engine';
+import { scanImage, cleanImage, cleanC2pa } from './engine';
 import { validateSelection } from './media';
 import { readC2pa } from './c2pa';
 import type { Request, Response } from './protocol';
@@ -18,14 +18,17 @@ scope.onmessage = async ({ data }) => {
       if (scan.format !== format) throw new Error('Dosya uzantısı ve kapsayıcı formatı uyuşmuyor.');
       const provenance = readC2pa(source, scan.format, scan.c2pa !== 'not-detected-not-guaranteed');
       scope.postMessage({ type: 'scan', scan: { ...scan, provenance } });
-    } else if (data.type === 'clean') {
+    } else if (data.type === 'clean' || data.type === 'clean-c2pa') {
       if (!source) throw new Error('Önce görseli yeniden tarayın.');
-      if (data.mode !== 'safe' && data.mode !== 'comprehensive') throw new Error('Geçersiz temizleme modu.');
-      const result = await cleanImage(source, data.ids, data.rightsConsent, data.mode);
+      if (data.type === 'clean-c2pa' && data.c2paConsent !== true) throw new Error('C2PA kaldırma için açık onay gerekir.');
+      if (data.type === 'clean' && data.mode !== 'safe' && data.mode !== 'comprehensive') throw new Error('Geçersiz temizleme modu.');
+      const result = data.type === 'clean-c2pa'
+        ? await cleanC2pa(source, data.c2paConsent)
+        : await cleanImage(source, data.ids, data.rightsConsent, data.mode);
       const mime = { JPEG:'image/jpeg', PNG:'image/png', WebP:'image/webp' }[result.scan.format];
       // Blob owns verified bytes. No full-resolution pixel decode or network operation.
       const blob = new Blob([result.data as Uint8Array<ArrayBuffer>], { type: mime });
-      scope.postMessage({ type: 'clean', output: { mode: result.mode, blob, scan: result.scan, removed: result.removed, retained: result.retained, payloadHash: result.payloadHash, checks: result.checks } });
+      scope.postMessage({ type: 'clean', output: { ...(data.type === 'clean-c2pa' ? { operation: 'c2pa-store-removal' as const } : {}), mode: result.mode, blob, scan: result.scan, removed: result.removed, retained: result.retained, payloadHash: result.payloadHash, checks: result.checks } });
     } else throw new Error('Geçersiz işlem.');
   } catch (error) {
     if (data.type === 'scan') source = undefined;

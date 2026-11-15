@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { stripTypeScriptTypes } from 'node:module';
 import { runInNewContext } from 'node:vm';
-import { scanImage, cleanImage } from './engine.ts';
+import { scanImage, cleanImage, cleanC2pa } from './engine.ts';
 import { readC2pa } from './c2pa.ts';
 import { validateSelection } from './media.ts';
 import type { Request, Response } from './protocol.ts';
@@ -15,7 +15,7 @@ function imageWorker() {
     onmessage: undefined as unknown as (event: { data: Request }) => Promise<void>,
     postMessage: (value: Response) => messages.push(structuredClone(value)),
   };
-  runInNewContext(stripTypeScriptTypes(source.replace(/^import .*;\r?\n/gm, '')), { self, Error, Uint8Array, Blob, validateSelection, scanImage, cleanImage, readC2pa });
+  runInNewContext(stripTypeScriptTypes(source.replace(/^import .*;\r?\n/gm, '')), { self, Error, Uint8Array, Blob, validateSelection, scanImage, cleanImage, cleanC2pa, readC2pa });
   return { self, messages };
 }
 
@@ -30,6 +30,20 @@ test('image Worker requires explicit valid mode and returns verified mode', asyn
   await self.onmessage({ data: { type: 'clean', ids: [], rightsConsent: true, mode: 'comprehensive' } });
   assert.equal(messages.at(-1).output.mode, 'comprehensive');
 });
+test('image Worker rejects missing and non-boolean C2PA consent without producing output', async () => {
+  const { self, messages } = imageWorker();
+  await self.onmessage({ data: { type: 'clean-c2pa', c2paConsent: true } });
+  assert.equal(messages.at(-1)?.type, 'error');
+  const file = new File([readFileSync(new URL('../tests/fixtures/image-1.jpg', import.meta.url))], 'image.jpg');
+  await self.onmessage({ data: { type: 'scan', file } });
+  for (const c2paConsent of [undefined, false, 'true', 1, null]) {
+    await self.onmessage({ data: { type: 'clean-c2pa', c2paConsent } as unknown as Request });
+    assert.equal(messages.at(-1)?.type, 'error');
+    assert.match((messages.at(-1) as { message: string }).message, /açık onay/);
+  }
+  assert.equal(messages.some(message => message.type === 'clean'), false);
+});
+
 test('image Worker rejects oversized images before reading bytes and invalidates previous source', async () => {
   const { self, messages } = imageWorker();
   const file = new File([readFileSync(new URL('../tests/fixtures/image-1.jpg', import.meta.url))], 'image.jpg');

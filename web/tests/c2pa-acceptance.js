@@ -50,13 +50,28 @@ async (page) => {
   assert(await results.locator('script').count()===0,'HTML executed');
   assert(await results.getByText(/Var; doğrulanmadı/).count()===1,'Signature unverified status missing');
   assert(await page.getByRole('button',{name:"Metadata'yı Temizle",exact:true}).isDisabled(),'Cleaning unblocked');
+  const remove = page.getByRole('button',{name:'Yalnız C2PA’yı Kaldır',exact:true});
+  await remove.click();
+  const dialog = page.getByRole('dialog',{name:'Yalnız gömülü C2PA kaydını kaldır'});
+  assert(await dialog.isVisible(),'Separate C2PA consent missing');
+  assert(await dialog.getByRole('button',{name:'Vazgeç',exact:true}).evaluate(el=>el===document.activeElement),'Consent initial focus');
+  await page.keyboard.press('Escape');
+  assert(!await dialog.isVisible(),'Escape did not dismiss');
+  assert(await remove.isEnabled(),'Dismiss locked action');
+  await remove.click();
+  await dialog.getByRole('button',{name:'Yetkim var, yalnız C2PA’yı kaldır',exact:true}).click();
+  await page.getByRole('button',{name:'C2PA Kaldırılmış Dosyayı İndir',exact:true}).waitFor();
+  assert(await page.getByText(/Diğer metadata korundu/).count()>0,'Retained metadata warning missing');
+  assert(await page.getByRole('button',{name:"Metadata'yı Temizle",exact:true}).isDisabled(),'Source metadata action changed');
+  await upload(true);
+  await results.getByRole('button',{name:'Tümünü Aç',exact:true}).click();
   for(const width of [320,390,768,1320]) {
     await page.setViewportSize({width,height:1000});
     assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),`Overflow ${width}`);
     assert(await page.evaluate(()=>{
        const sections=['.dropzone','.file-details','.inspection-panel','.site-footer'].map(selector=>document.querySelector(selector));
        const results=document.querySelector('.metadata-results'), modes=document.querySelector('.cleaning-options');
-       return sections.every((element,index)=>index===0||sections[index-1].getBoundingClientRect().bottom<=element.getBoundingClientRect().top+1) && results.getBoundingClientRect().bottom<=modes.getBoundingClientRect().top+1;
+       return sections.every((element,index)=>index===0||sections[index-1].getBoundingClientRect().bottom<=element.getBoundingClientRect().top+1) && modes.getBoundingClientRect().bottom<=results.getBoundingClientRect().top+1;
     }),`Section order ${width}`);
     assert(await results.locator('.c2pa-reader p').evaluateAll(elements=>elements.every(element=>element.scrollWidth<=element.clientWidth+1)),`Metadata overflow ${width}`);
     assert(await page.evaluate(()=>{

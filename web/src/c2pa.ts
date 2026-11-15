@@ -1,4 +1,5 @@
 import { decodeCbor, type CborValue } from './cbor.ts';
+import { validateC2paStore } from './c2pa-structure.ts';
 import type { C2paManifest, C2paReport } from './c2pa-types';
 
 const MAX = 4 * 1024 * 1024;
@@ -80,6 +81,7 @@ export function readC2pa(data: Uint8Array, format: string, detected: boolean, no
       }
       return result;
     };
+    validateC2paStore(joined);
     const roots = parse(joined, 0), store = roots[0];
     if (roots.length !== 1 || store.type !== 'jumb' || store.uuid !== uuid('63327061') || store.label !== 'c2pa') fail('Desteklenmeyen C2PA store');
     const manifestBoxes = store.children.slice(1);
