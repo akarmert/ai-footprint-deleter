@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 
-type Star = { x: number; y: number; radius: number; speed: number; phase: number; color: string; accent: boolean };
+type Star = { x: number; y: number; radius: number; speed: number; direction: number; phase: number; twinkleRate: number; color: string; accent: boolean };
 
 export function Atmosphere({ paused }: { paused: boolean }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -18,7 +18,7 @@ export function Atmosphere({ paused }: { paused: boolean }) {
     if (!canvas || !context) return;
     const motion = matchMedia('(prefers-reduced-motion: reduce)');
     const styles = getComputedStyle(canvas);
-    const blue = styles.getPropertyValue('--blue').trim();
+    const white = styles.getPropertyValue('--text').trim();
     const orange = styles.getPropertyValue('--orange').trim();
     const cyan = styles.getPropertyValue('--atmosphere-cyan').trim();
     const neutral = styles.getPropertyValue('--secondary').trim();
@@ -30,28 +30,18 @@ export function Atmosphere({ paused }: { paused: boolean }) {
     function draw() {
       if (!context) return;
       context.clearRect(0, 0, width, height);
-      context.save();
-      context.translate(width * .6, Math.min(height * .28, 260));
-      context.scale(1, .72);
-      const glow = context.createRadialGradient(0, 0, 0, 0, 0, Math.max(width * .46, 320));
-      glow.addColorStop(0, blue);
-      glow.addColorStop(1, 'transparent');
-      context.globalAlpha = .075 + Math.sin(elapsed * .18) * .012;
-      context.fillStyle = glow;
-      context.fillRect(-width, -height * 2, width * 2, height * 4);
-      context.restore();
       for (const star of stars) {
         const edgeFade = Math.max(0, Math.min(1, star.x / 32, (width - star.x) / 32, star.y / 32, (height - star.y) / 32));
         const centerDistance = Math.abs(star.x / width - .5) * 2;
         const densityFade = .12 + .88 * Math.pow(centerDistance, 1.4);
-        const twinkle = .72 + Math.sin(elapsed * (.3 + star.speed * .08) + star.phase) * .28;
+        const twinkle = .82 + Math.sin(elapsed * star.twinkleRate + star.phase) * .18;
         context.globalAlpha = edgeFade * densityFade * twinkle * (star.accent ? .85 : .45);
         if (star.accent) {
-          const halo = context.createRadialGradient(star.x, star.y, 0, star.x, star.y, 11);
+          const halo = context.createRadialGradient(star.x, star.y, 0, star.x, star.y, 4);
           halo.addColorStop(0, star.color); halo.addColorStop(1, 'transparent');
           context.fillStyle = halo;
           context.globalAlpha *= .14;
-          context.fillRect(star.x - 11, star.y - 11, 22, 22);
+          context.fillRect(star.x - 4, star.y - 4, 8, 8);
           context.globalAlpha /= .14;
         }
         context.fillStyle = star.color;
@@ -65,10 +55,13 @@ export function Atmosphere({ paused }: { paused: boolean }) {
       const delta = previous ? Math.min((now - previous) / 1000, .05) : 0;
       previous = now; elapsed += delta;
       for (const star of stars) {
-        star.x += star.speed * delta * .4;
-        star.y -= star.speed * delta;
+        const distance = star.speed * delta * 1.35 * Math.hypot(.4, 1);
+        star.x += Math.cos(star.direction) * distance;
+        star.y += Math.sin(star.direction) * distance;
         if (star.y < -12) star.y = height + 12;
+        if (star.y > height + 12) star.y = -12;
         if (star.x > width + 12) star.x = -12;
+        if (star.x < -12) star.x = width + 12;
       }
       draw();
       frame = requestAnimationFrame(tick);
@@ -84,13 +77,13 @@ export function Atmosphere({ paused }: { paused: boolean }) {
       canvas!.width = Math.round(width * ratio); canvas!.height = Math.round(height * ratio);
       context!.setTransform(ratio, 0, 0, ratio, 0, 0);
       const mobile = width < 700;
-      const count = mobile ? 34 : Math.min(150, Math.round(width * height / 10000));
+      const count = mobile ? 77 : Math.round((Math.min(150, Math.round(width * height / 10000)) + 21) * 1.4);
       stars = Array.from({ length: count }, (_, index) => {
         const accent = index < (mobile ? 2 : 5);
         const left = index % 2 === 0;
         const edge = accent || Math.random() < .8;
         const x = edge ? (left ? Math.random() * .23 : .77 + Math.random() * .23) * width : Math.random() * width;
-        return { x, y: Math.random() * height, radius: accent ? 1.15 : .45 + Math.random() * .35, speed: .8 + Math.random() * 2.2, phase: Math.random() * Math.PI * 2, color: accent ? index % 3 === 0 ? orange : cyan : neutral, accent };
+        return { x, y: Math.random() * height, radius: accent ? 1.15 : .45 + Math.random() * .35, speed: .8 + Math.random() * 2.2, direction: -Math.PI * .38 + (Math.random() - .5) * 1.1 + (index % 7 === 0 ? Math.PI : 0), phase: Math.random() * Math.PI * 2, twinkleRate: .35 + Math.random() * .45, color: accent ? index === 0 ? orange : cyan : index % 3 === 0 ? white : neutral, accent };
       });
       draw();
       reconcile();

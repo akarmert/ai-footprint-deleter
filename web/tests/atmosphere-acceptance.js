@@ -7,6 +7,12 @@ async page => {
     window.atmosphereFrames = 0; window.atmosphereArcs = [];
     const clear = CanvasRenderingContext2D.prototype.clearRect;
     const arc = CanvasRenderingContext2D.prototype.arc;
+    const gradient = CanvasRenderingContext2D.prototype.createRadialGradient;
+    window.atmosphereMaxGlow = 0;
+    CanvasRenderingContext2D.prototype.createRadialGradient = function (...args) {
+      if (this.canvas.matches('.atmosphere')) window.atmosphereMaxGlow = Math.max(window.atmosphereMaxGlow, args[5]);
+      return gradient.apply(this, args);
+    };
     CanvasRenderingContext2D.prototype.clearRect = function (...args) {
       if (this.canvas.matches('.atmosphere')) { window.atmosphereFrames++; window.atmosphereArcs = []; }
       return clear.apply(this, args);
@@ -26,7 +32,12 @@ async page => {
   const distances = after.stars.map((star, i) => Math.hypot(star.x - before.stars[i].x, star.y - before.stars[i].y));
   assert(distances.some(d => d > .5), 'Stars did not drift');
   assert(Math.max(...distances) - Math.min(...distances) > .5, 'Depth speeds are not different');
-  assert(after.stars.some((star, i) => Math.abs(star.alpha - before.stars[i].alpha) > .01), 'Twinkle did not change');
+  const stable = after.stars.map((star, i) => ({ dx: star.x - before.stars[i].x, dy: star.y - before.stars[i].y, alpha: star.alpha - before.stars[i].alpha })).filter(delta => Math.hypot(delta.dx, delta.dy) < 30);
+  assert(stable.some(delta => delta.dy > .5) && stable.some(delta => delta.dy < -.5), 'Stars all move in one direction');
+  assert(stable.some(delta => delta.alpha > .005) && stable.some(delta => delta.alpha < -.005), 'Twinkle is synchronized');
+  assert(await page.evaluate(() => window.atmosphereMaxGlow <= 4), 'Large canvas glow returned');
+  const layers = await page.evaluate(() => ({ background: getComputedStyle(document.querySelector('.atmosphere')).backgroundImage, before: getComputedStyle(document.body, '::before').content, after: getComputedStyle(document.body, '::after').content }));
+  assert(layers.background === 'none' && layers.before === 'none' && layers.after === 'none', 'Secondary CSS atmosphere or glow returned');
   const stopped = async label => {
     await page.waitForTimeout(100);
     const a = await sample(); await page.waitForTimeout(300); const b = await sample();
@@ -51,7 +62,7 @@ async page => {
   await page.waitForFunction(n => window.atmosphereFrames > n, (await sample()).frames);
   await page.evaluate(() => { window.Worker = window.actualWorker; });
   const sizes = [];
-  for (const width of [360, 390, 768, 1440]) {
+  for (const width of [320, 390, 768, 1280, 1440]) {
     await page.setViewportSize({ width, height: 900 });
     const geometry = await page.locator('.atmosphere').evaluate(canvas => ({ width: canvas.getBoundingClientRect().width, height: canvas.getBoundingClientRect().height, left: canvas.getBoundingClientRect().left, pointer: getComputedStyle(canvas).pointerEvents, opacity: getComputedStyle(canvas).opacity, zIndex: getComputedStyle(canvas).zIndex, base: getComputedStyle(document.body).backgroundColor, oldGlow: getComputedStyle(document.querySelector('.hero'), '::before').content, overflow: document.documentElement.scrollWidth > innerWidth }));
     assert(geometry.width === width && geometry.height === 900 && geometry.left === 0, `Canvas not viewport-wide ${width}`);
