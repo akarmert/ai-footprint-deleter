@@ -5,3 +5,11 @@ __pycache__/
 build/
 dist/
 *.spec
+
+# Yerel yedek ve arşivler
+*.zip
+
+# Kilo yerel oturum günlükleri
+.kilo/visual-events*.jsonl
+.kilo/visual-identities.json
+.kilo/node_modules/
