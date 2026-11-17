@@ -65,8 +65,39 @@ test('malformed CBOR, box lengths, budget, opaque and unsupported structures fai
   assert.equal(readC2pa(jpeg, 'JPEG', true).status, 'unreadable');
   for (const format of ['PNG', 'WebP']) {
     assert.equal(readC2pa(new Uint8Array(), format, false).status, 'absent');
-    assert.equal(readC2pa(new Uint8Array(), format, true).status, 'unsupported');
+    assert.equal(readC2pa(new Uint8Array(), format, true).status, 'unreadable');
   }
+  assert.equal(readC2pa(new Uint8Array(), 'TIFF', true).status, 'unsupported');
+});
+const fixture = (name: string) => new Uint8Array(readFileSync(new URL(`../tests/fixtures/${name}`, import.meta.url)));
+const crc = (data: Uint8Array) => { let c = 0xffffffff; for (const b of data) { c ^= b; for (let i = 0; i < 8; i++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; } return (c ^ 0xffffffff) >>> 0; };
+const pngInsert = (data: Uint8Array, kind: string, payload: Uint8Array) => { const chunk = new Uint8Array(payload.length + 12), view = new DataView(chunk.buffer); view.setUint32(0, payload.length); chunk.set(utf8(kind), 4); chunk.set(payload, 8); view.setUint32(chunk.length - 4, crc(chunk.subarray(4, chunk.length - 4))); return join(data.subarray(0, 33), chunk, data.subarray(33)); };
+const webpInsert = (data: Uint8Array, kind: string, payload: Uint8Array) => { const chunk = new Uint8Array(8 + payload.length + payload.length % 2); chunk.set(utf8(kind)); new DataView(chunk.buffer).setUint32(4, payload.length, true); chunk.set(payload, 8); const out = join(data, chunk); new DataView(out.buffer).setUint32(4, out.length - 8, true); return out; };
+for (const [format, build] of [['PNG', (s: Uint8Array) => pngInsert(fixture('image-1.png'), 'caBX', s)], ['WebP', (s: Uint8Array) => webpInsert(fixture('image-1.webp'), 'C2PA', s)]] as const) {
+  test(`${format} embedded C2PA store contents are read as unverified claims`, () => {
+    const data = build(store()), before = data.slice(), result = readC2pa(data, format, true);
+    assert.equal(result.status, 'readable-unverified', result.reason);
+    assert.deepEqual(result.manifests[0].claimGenerator, ['Fixture Claim Generator']);
+    assert.equal(result.manifests[0].aiSources.length, 1);
+    assert.deepEqual(data, before);
+    assert.equal(readC2pa(build(store(false)), format, true).manifests[0].aiSources.length, 0);
+    assert.equal(readC2pa(build(store(true, true)), format, true).status, 'unreadable');
+    const scan = scanImage(data);
+    assert.equal(scan.provenance?.status, 'readable-unverified');
+    assert.equal(scan.footprints?.state, 'AI_DECLARATION');
+  });
+}
+test('PNG/WebP reader rejects duplicate or misplaced stores and malformed containers', () => {
+  const twice = pngInsert(pngInsert(fixture('image-1.png'), 'caBX', store()), 'caBX', store());
+  assert.equal(readC2pa(twice, 'PNG', true).status, 'unreadable');
+  const png = fixture('image-1.png'), afterIdat = png.slice(); const idat = (() => { for (let p = 8; p < png.length;) { const n = new DataView(png.buffer, png.byteOffset + p).getUint32(0); if (String.fromCharCode(...png.subarray(p + 4, p + 8)) === 'IDAT') return p + 12 + n; p += n + 12; } return -1; })();
+  const misplaced = join(afterIdat.subarray(0, idat), pngInsert(new Uint8Array(33), 'caBX', store()).subarray(33), afterIdat.subarray(idat));
+  assert.equal(readC2pa(misplaced, 'PNG', true).status, 'unreadable');
+  const doubled = webpInsert(webpInsert(fixture('image-1.webp'), 'C2PA', store()), 'C2PA', store());
+  assert.equal(readC2pa(doubled, 'WebP', true).status, 'unreadable');
+  const truncated = webpInsert(fixture('image-1.webp'), 'C2PA', store()); new DataView(truncated.buffer).setUint32(4, truncated.length + 100, true);
+  assert.equal(readC2pa(truncated, 'WebP', true).status, 'unreadable');
+  assert.equal(readC2pa(fixture('image-1.png'), 'PNG', false).status, 'absent');
 });
 test('numbered actions are read and duplicate manifest labels are rejected', () => {
   for (const label of ['c2pa.actions__1', 'c2pa.actions.v2__1']) assert.equal(readC2pa(wrap(store(true, false, label)), 'JPEG', true).manifests[0].aiSources.length, 1);

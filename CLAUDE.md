@@ -31,7 +31,7 @@ npm start       # dist'i http://localhost:3000 üzerinde sunar
 - `inspect.worker.ts` / `video.worker.ts` — görsel ve video işleri; sözleşme `protocol.ts`.
 - `engine.ts` — JPEG/PNG/WebP kapsayıcıları, metadata politikası, çıktı doğrulama.
 - `footprints.ts` — AI beyanı / ipucu / provenance ayrımı ve işlem planı.
-- `c2pa.ts`, `cbor.ts`, `c2pa-structure.ts` — C2PA okuma (içerik şu an yalnız JPEG) ve yapı doğrulama; `xmp.ts` — XMP alt kümesi.
+- `c2pa.ts`, `cbor.ts`, `c2pa-structure.ts` — C2PA okuma (JPEG APP11, PNG `caBX`, WebP `C2PA`) ve yapı doğrulama; `xmp.ts` — XMP alt kümesi.
 - `video.ts` — MP4/MOV aynı uzunlukta dönüşüm.
 
 ## Kurallar
