@@ -2,6 +2,8 @@
 
 ## Web — yayımlanmamış
 
+- Çoklu görüntü (MPF / Ultra HDR) JPEG desteği: EOI sonrası ikincil görüntüler artık taramayı reddettirmiyor; MPF dizini tam doğrulanır, ikincil görüntüler bayt bayt korunur, kaldırmalarda MPF boyut/offset alanları güncellenir. İkincil görüntülerdeki metadata kaldırılmaz ve bu açıkça bildirilir.
+- PNG `caBX` ve WebP `C2PA` manifest içeriği okunur; AI beyanı listesi `compositeWithTrainedAlgorithmicMedia`'yı da kapsar.
 - C2PA kaldırma onayı tek kurala bağlandı: `Remove AI Footprint` ve `Yalnız C2PA’yı Kaldır` ayrı onay penceresi açmaz; kapsam ve kaybolan bilgiler düğmenin yanında yazılır. Hak/telif onayı gerektiren metadata temizliği onay penceresini korur.
 - Tüm indirilen ve diske yazılan çıktılar `<ad>-removed.<uzantı>` adını alır.
 - Sonuç ekranları piksel içi filigranların (ör. SynthID) kaldırılmadığını açıkça söyler; başlıklar kaldırılan kapsamı tam adlandırır.

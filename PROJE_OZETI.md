@@ -180,7 +180,7 @@ Video temizliği medya yeniden kodlaması yapmaz; aynı uzunlukta boşaltma ile 
 
 - Web uygulaması C2PA imzasını, sertifika güvenini, assertion bağlantılarını veya içerik hash'ini kriptografik olarak doğrulamaz.
 - Algılanan veya belirsiz provenance, normal metadata temizliğini engeller.
-- Web, desteklenen gömülü C2PA depolarını (JPEG APP11, PNG `caBX`, WebP `C2PA`) yapısal doğrulamadan sonra kaldırabilir: `Remove AI Footprint` akışında veya gelişmiş `Yalnız C2PA’yı Kaldır` ile, ayrı onay penceresi olmadan. JPEG MPF, harici/çoğul referanslar ve bozuk yapılar desteklenmez; videoda C2PA kaldırma yoktur.
+- Web, desteklenen gömülü C2PA depolarını (JPEG APP11, PNG `caBX`, WebP `C2PA`) yapısal doğrulamadan sonra kaldırabilir: `Remove AI Footprint` akışında veya gelişmiş `Yalnız C2PA’yı Kaldır` ile, ayrı onay penceresi olmadan. Harici/çoğul referanslar ve bozuk yapılar desteklenmez; çoklu görüntü (MPF/Ultra HDR) JPEG'lerde ikincil görüntüler bayt bayt korunur, yalnız MPF boyut/konum alanları güncellenir; videoda C2PA kaldırma yoktur.
 - C2PA okuyucusu JPEG APP11, PNG `caBX` ve WebP `C2PA` depolarındaki JUMBF/CBOR alt kümesiyle sınırlıdır; video C2PA içeriğini çözümlemez.
 - `trainedAlgorithmicMedia` gibi desteklenen standart kaynak beyanları ile araç/prompt ipuçları ayrı değerlendirilir.
 - XMP beyanı araması ilk 512 karakterlik önizlemeyle sınırlıdır ve tam yapısal XML doğrulaması değildir.

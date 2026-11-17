@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
-import { scanImage, cleanImage, cleanC2pa, verifyOutput, isRemovable } from './engine.ts'
+import { scanImage, cleanImage, cleanC2pa, cleanFootprints, verifyOutput, isRemovable } from './engine.ts'
 const fixture = (name: string): Uint8Array => new Uint8Array(readFileSync(new URL(`../tests/fixtures/${name}`, import.meta.url)))
 const concat = (...parts: Uint8Array[]): Uint8Array => { const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0)); let pos = 0; for (const p of parts) { out.set(p, pos); pos += p.length } return out }
 const bytes = (s: string) => new TextEncoder().encode(s)
@@ -243,3 +243,132 @@ test('JPEG split APP11 store is all-or-nothing, consistent and contiguous', asyn
   assert.equal(scanImage(separated).c2paRemovable, false); await assert.rejects(cleanC2pa(separated, true))
 })
 test('preview and count limits', () => { const data = pngInsert(fixture('palette.png'), 'tEXt', bytes('Comment\0' + 'x'.repeat(10000))); assert.ok(scanImage(data).records.every(r => r.preview.length <= 512)); let many = fixture('palette.png'); const chunk = pngChunk('vpAg', new Uint8Array()); many = concat(many.subarray(0, 33), ...Array.from({ length: 4096 }, () => chunk), many.subarray(33)); assert.throws(() => scanImage(many), /sayısı/) })
+
+// --- JPEG Multi-Picture Format (MPF / Ultra HDR gain-map style) ---
+function mpfPayload(little: boolean, sizes: number[], offsets: number[]): Uint8Array {
+  const tags = 3, entryOffset = 8 + 2 + tags * 12 + 4, n = sizes.length
+  const t = new Uint8Array(entryOffset + 16 * n), v = new DataView(t.buffer)
+  t.set(bytes(little ? 'II' : 'MM')); v.setUint16(2, 42, little); v.setUint32(4, 8, little); v.setUint16(8, tags, little)
+  const tag = (i: number, id: number, type: number, count: number, value: number | Uint8Array) => { const e = 10 + i * 12; v.setUint16(e, id, little); v.setUint16(e + 2, type, little); v.setUint32(e + 4, count, little); if (typeof value === 'number') v.setUint32(e + 8, value, little); else t.set(value, e + 8) }
+  tag(0, 0xb000, 7, 4, bytes('0100')); tag(1, 0xb001, 4, 1, n); tag(2, 0xb002, 7, 16 * n, entryOffset)
+  sizes.forEach((size, i) => { const e = entryOffset + 16 * i; v.setUint32(e, i ? 0 : 0x030000, little); v.setUint32(e + 4, size, little); v.setUint32(e + 8, offsets[i]!, little) })
+  return concat(bytes('MPF\0'), t)
+}
+/** Inserts an APP2 MPF segment at byte `at` of the primary JPEG and appends the secondary JPEGs. */
+function mpfFile(primary: Uint8Array, secondaries: Uint8Array[], { at = 2, little = false, tamper }: { at?: number; little?: boolean; tamper?: (sizes: number[], offsets: number[]) => void } = {}): Uint8Array {
+  const count = Math.max(2, secondaries.length + 1)
+  const segmentLength = 4 + mpfPayload(little, new Array(count).fill(0), new Array(count).fill(0)).length
+  const base = at + 4 + 4, primarySize = primary.length + segmentLength
+  const sizes = [primarySize, ...secondaries.map(s => s.length)], offsets = [0]
+  let pos = primarySize
+  for (const s of secondaries) { offsets.push(pos - base); pos += s.length }
+  while (sizes.length < count) { sizes.push(0); offsets.push(0) }
+  tamper?.(sizes, offsets)
+  const payload = mpfPayload(little, sizes, offsets)
+  return concat(primary.subarray(0, at), new Uint8Array([255, 226, (payload.length + 2) >> 8, (payload.length + 2) & 255]), payload, primary.subarray(at), ...secondaries)
+}
+function mpfEntries(data: Uint8Array): { little: boolean; base: number; sizes: number[]; offsets: number[] } {
+  let p = 2
+  while (!(data[p + 1] === 0xe2 && String.fromCharCode(...data.subarray(p + 4, p + 8)) === 'MPF\0')) p += 2 + ((data[p + 2]! << 8) | data[p + 3]!)
+  const base = p + 8, v = new DataView(data.buffer, data.byteOffset + base), little = data[base] === 73
+  const ifd = v.getUint32(4, little), n = v.getUint16(ifd, little)
+  let entryOffset = 0, count = 0
+  for (let i = 0; i < n; i++) { const e = ifd + 2 + i * 12, id = v.getUint16(e, little); if (id === 0xb002) entryOffset = v.getUint32(e + 8, little); if (id === 0xb001) count = v.getUint32(e + 8, little) }
+  return { little, base, sizes: Array.from({ length: count }, (_, i) => v.getUint32(entryOffset + i * 16 + 4, little)), offsets: Array.from({ length: count }, (_, i) => v.getUint32(entryOffset + i * 16 + 8, little)) }
+}
+function assertMpfConsistent(data: Uint8Array, secondaries: Uint8Array[]) {
+  const { base, sizes, offsets } = mpfEntries(data)
+  assert.equal(offsets[0], 0)
+  let pos = sizes[0]!
+  secondaries.forEach((s, i) => { assert.equal(base + offsets[i + 1]!, pos); assert.equal(sizes[i + 1], s.length); assert.deepEqual(data.subarray(pos, pos + s.length), s); pos += s.length })
+  assert.equal(pos, data.length)
+}
+
+for (const little of [false, true]) test(`MPF ${little ? 'little' : 'big'}-endian: secondary images are scanned as retained image data`, async () => {
+  const gain = fixture('progressive.jpg'), data = mpfFile(fixture('image-1.jpg'), [gain], { little })
+  const scan = scanImage(data)
+  assert.equal(scan.width, 24); assert.equal(scan.cleaningBlocked, false)
+  const mpf = scan.records.find(r => r.kind === 'MPF')!
+  assert.equal(mpf.status, 'protected'); assert.equal(isRemovable(mpf, 'comprehensive'), false)
+  assert.ok(scan.notes.some(n => /MPF/.test(n)))
+  // The MPF index itself adds no "incomplete inspection"; only the primary's own records do.
+  assert.equal(scan.footprints?.incomplete, scanImage(fixture('image-1.jpg')).footprints?.incomplete)
+  // Removing EXIF shrinks the primary; the MPF primary size and secondary offset follow it.
+  const ids = scan.records.filter(r => r.requiresRightsConsent).map(r => r.id)
+  assert.ok(ids.length > 0)
+  const result = await cleanImage(data, ids, true)
+  assert.ok(result.data.length < data.length)
+  assertMpfConsistent(result.data, [gain])
+  assert.equal(mpfEntries(result.data).little, little)
+  assert.equal(result.payloadHash, (await cleanImage(data, [], false)).payloadHash)
+  await verifyOutput(data, result.data, ids, true)
+})
+test('MPF with two secondary images keeps both byte-identical after cleaning', async () => {
+  const a = fixture('progressive.jpg'), b = fixture('image-6.jpg'), data = mpfFile(fixture('image-1.jpg'), [a, b])
+  const ids = scanImage(data).records.filter(r => r.requiresRightsConsent).map(r => r.id)
+  assertMpfConsistent((await cleanImage(data, ids, true)).data, [a, b])
+})
+for (const order of ['APP11 after MPF', 'APP11 before MPF'] as const) test(`MPF + C2PA (${order}): store removal rewrites only MPF size/offset fields`, async () => {
+  const gain = fixture('progressive.jpg'), store = c2paStore(), primary = jpgInsert(fixture('image-1.jpg'), 235, app11(store))
+  const segment = 4 + app11(store).length
+  const data = order === 'APP11 after MPF' ? mpfFile(primary, [gain]) : mpfFile(primary, [gain], { at: 2 + segment })
+  const scan = scanImage(data)
+  assert.equal(scan.c2paRemovable, true, scan.c2paDecision?.reason)
+  const result = await cleanC2pa(data, true)
+  assert.equal(result.removed, 1)
+  assertMpfConsistent(result.data, [gain])
+  assert.equal(result.data.length, data.length - segment)
+  const before = mpfEntries(data), after = mpfEntries(result.data)
+  assert.equal(after.sizes[0], before.sizes[0]! - segment)
+  assert.equal(after.offsets[1], order === 'APP11 after MPF' ? before.offsets[1]! - segment : before.offsets[1])
+  const footprints = await cleanFootprints(data, { c2paConsent: true, rightsConsent: false })
+  assert.ok(footprints.output, footprints.footprintResult.reason)
+  assertMpfConsistent(footprints.output!.data, [gain])
+})
+test('data after EOI is rejected unless an MPF index describes it exactly', () => {
+  const primary = fixture('image-1.jpg'), gain = fixture('progressive.jpg')
+  const bad = [
+    concat(primary, gain),
+    mpfFile(primary, [gain], { tamper: (_s, o) => { o[1]! += 1 } }),
+    mpfFile(primary, [gain], { tamper: s => { s[0]! -= 1 } }),
+    mpfFile(primary, [gain], { tamper: s => { s[1]! -= 1 } }),
+    concat(mpfFile(primary, [gain]), new Uint8Array([0])),
+    mpfFile(primary, [concat(new Uint8Array([0, 0]), gain.subarray(2))]),
+  ]
+  bad.forEach((data, i) => assert.throws(() => scanImage(data), undefined, `case ${i}`))
+})
+test('MPF segment without described images blocks cleaning and C2PA removal', async () => {
+  const data = jpgInsert(jpgInsert(fixture('image-1.jpg'), 235, app11(c2paStore())), 226, mpfPayload(false, [10, 10], [0, 10]))
+  const scan = scanImage(data)
+  assert.equal(scan.cleaningBlocked, true); assert.equal(scan.c2paRemovable, false)
+  await assert.rejects(cleanC2pa(data, true))
+})
+test('provenance or AI declarations inside a secondary image are reported and block removal', async () => {
+  const gain = jpgInsert(fixture('progressive.jpg'), 235, app11(c2paStore()))
+  const data = mpfFile(jpgInsert(fixture('image-1.jpg'), 235, app11(c2paStore())), [gain])
+  const scan = scanImage(data)
+  assert.equal(scan.cleaningBlocked, true); assert.equal(scan.c2paRemovable, false)
+  await assert.rejects(cleanC2pa(data, true))
+  const xmp = concat(bytes('http://ns.adobe.com/xap/1.0/\0'), bytes('<x:xmpmeta xmlns:x="adobe:ns:meta/"><r:RDF xmlns:r="http://www.w3.org/1999/02/22-rdf-syntax-ns#"><r:Description xmlns:i="http://iptc.org/std/Iptc4xmpExt/2008-02-29/" i:DigitalSourceType="http://cv.iptc.org/newscodes/digitalsourcetype/trainedAlgorithmicMedia"/></r:RDF></x:xmpmeta>'))
+  const declared = scanImage(mpfFile(fixture('image-1.jpg'), [jpgInsert(fixture('progressive.jpg'), 225, xmp)]))
+  assert.ok(declared.footprints!.evidence.some(e => e.category === 'explicit-ai' && !e.removable))
+})
+test('Ultra HDR gain-map XMP in the primary is protected when MPF images are present', () => {
+  const xmp = concat(bytes('http://ns.adobe.com/xap/1.0/\0'), bytes('<x:xmpmeta xmlns:x="adobe:ns:meta/"><r:RDF xmlns:r="http://www.w3.org/1999/02/22-rdf-syntax-ns#"><r:Description xmlns:hdrgm="http://ns.adobe.com/hdr-gain-map/1.0/" hdrgm:Version="1.0"/></r:RDF></x:xmpmeta>'))
+  const record = scanImage(mpfFile(jpgInsert(fixture('image-1.jpg'), 225, xmp), [fixture('progressive.jpg')])).records.find(r => r.kind === 'XMP')!
+  assert.equal(record.status, 'protected'); assert.equal(record.requiresRightsConsent, false); assert.match(record.reason, /Ultra HDR/)
+  // Without MPF images the same XMP stays removable with rights consent.
+  assert.equal(scanImage(jpgInsert(fixture('image-1.jpg'), 225, xmp)).records.find(r => r.kind === 'XMP')!.requiresRightsConsent, true)
+})
+test('metadata in a secondary MPF image is reported as retained and keeps the result partial', async () => {
+  const exif = fixture('image-1.jpg').subarray(20 + 2 + 2, 20 + 2 + 118)
+  const gain = jpgInsert(fixture('progressive.jpg'), 225, exif)
+  const data = mpfFile(fixture('image-1.jpg'), [gain])
+  const scan = scanImage(data)
+  assert.equal(scan.footprints?.incomplete, true)
+  assert.match(scan.records.find(r => r.kind === 'MPF')!.reason, /ikincil görüntülerde/)
+  assert.ok(scan.notes.some(n => /İkincil görüntülerde EXIF/.test(n)))
+  const ids = scan.records.filter(r => r.requiresRightsConsent).map(r => r.id)
+  const result = await cleanImage(data, ids, true)
+  assertMpfConsistent(result.data, [gain])
+})
