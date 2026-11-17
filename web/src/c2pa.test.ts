@@ -15,8 +15,8 @@ const cbor = (value: any): Uint8Array => {
   if (Array.isArray(value)) return join(header(4, value.length), ...value.map(cbor));
   const entries = Object.entries(value); return join(header(5, entries.length), ...entries.flatMap(([key, value]) => [cbor(key), cbor(value)]));
 };
-const store = (ai = true, malformed = false, actionLabel = 'c2pa.actions.v2') => superbox('c2pa', 'c2pa', superbox('c2ma', 'urn:uuid:test',
-  superbox('c2as', 'c2pa.assertions', superbox('cbor', actionLabel, box('cbor', malformed ? new Uint8Array([0xa1]) : cbor({ actions: [{ action: 'c2pa.created', digitalSourceType: ai ? 'http://cv.iptc.org/newscodes/digitalsourcetype/trainedAlgorithmicMedia' : 'http://cv.iptc.org/newscodes/digitalsourcetype/digitalCapture', softwareAgent: { name: 'Fixture software' }, description: 'Applied SynthID watermark' }] })))),
+const store = (ai: boolean | string = true, malformed = false, actionLabel = 'c2pa.actions.v2') => superbox('c2pa', 'c2pa', superbox('c2ma', 'urn:uuid:test',
+  superbox('c2as', 'c2pa.assertions', superbox('cbor', actionLabel, box('cbor', malformed ? new Uint8Array([0xa1]) : cbor({ actions: [{ action: 'c2pa.created', digitalSourceType: typeof ai === 'string' ? ai : ai ? 'http://cv.iptc.org/newscodes/digitalsourcetype/trainedAlgorithmicMedia' : 'http://cv.iptc.org/newscodes/digitalsourcetype/digitalCapture', softwareAgent: { name: 'Fixture software' }, description: 'Applied SynthID watermark' }] })))),
   superbox('c2cl', 'c2pa.claim.v2', box('cbor', cbor({ claim_generator_info: [{ name: 'Fixture Claim Generator' }] }))),
   superbox('c2cs', 'c2pa.signature', box('cbor', new Uint8Array([0xd2, 0x80])))));
 const jpeg = new Uint8Array(readFileSync(new URL('../tests/fixtures/progressive.jpg', import.meta.url)));
@@ -46,6 +46,11 @@ test('no AI declaration does not erase provenance uncertainty', () => {
   const result = readC2pa(wrap(store(false)), 'JPEG', true);
   assert.equal(result.status, 'readable-unverified');
   assert.equal(result.manifests[0].aiSources.length, 0);
+});
+test('AI-edited composite Digital Source Type counts as an AI declaration; other algorithmic types do not', () => {
+  const iptc = 'http://cv.iptc.org/newscodes/digitalsourcetype/';
+  assert.equal(readC2pa(wrap(store(`${iptc}compositeWithTrainedAlgorithmicMedia`)), 'JPEG', true).manifests[0].aiSources.length, 1);
+  for (const term of ['algorithmicMedia', 'compositeSynthetic', 'digitalCapture']) assert.equal(readC2pa(wrap(store(`${iptc}${term}`)), 'JPEG', true).manifests[0].aiSources.length, 0, term);
 });
 test('APP11 fragmentation repeats box headers and enforces complete sequence', () => {
   assert.equal(readC2pa(wrap(store(), 50), 'JPEG', true).status, 'readable-unverified');

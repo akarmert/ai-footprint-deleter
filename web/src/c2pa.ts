@@ -1,5 +1,6 @@
 import { decodeCbor, type CborValue } from './cbor.ts';
 import { validateC2paStore } from './c2pa-structure.ts';
+import { isAiDigitalSourceType } from './ai-source-types.ts';
 import type { C2paManifest, C2paReport } from './c2pa-types';
 
 const MAX = 4 * 1024 * 1024;
@@ -130,7 +131,7 @@ export function readC2pa(data: Uint8Array, format: string, detected: boolean, no
           const description = string(action.get('description'));
           const source = `${manifest.label} / ${assertion.label}`;
           manifest.actions.push({ action: name, sourceType, software, description, source });
-          if (sourceType === 'http://cv.iptc.org/newscodes/digitalsourcetype/trainedAlgorithmicMedia') {
+          if (isAiDigitalSourceType(sourceType)) {
             if (!manifest.aiSources.includes(source)) manifest.aiSources.push(source);
           }
         }
