@@ -11,7 +11,7 @@ scope.onmessage = async ({ data }) => {
     if (data.type === 'scan') {
       source = undefined;
       const format = validateSelection(data.file);
-      if (format === 'MP4' || format === 'MOV') throw new Error('Video işleme Faz 2 kapsamında değil. JPEG, PNG veya WebP seçin.');
+      if (format === 'MP4' || format === 'MOV') throw new Error('Görsel işleyicisi video dosyalarını işlemez; MP4/MOV dosyaları video işleyicisine yönlendirilmelidir.');
       source = new Uint8Array(await data.file.arrayBuffer());
       const scan = scanImage(source);
       if (scan.format !== format) throw new Error('Dosya uzantısı ve kapsayıcı formatı uyuşmuyor.');

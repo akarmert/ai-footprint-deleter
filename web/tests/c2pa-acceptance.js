@@ -56,15 +56,10 @@ async (page) => {
   assert(await results.getByText(/Var; doğrulanmadı/).count()===1,'Signature unverified status missing');
   assert(await page.getByRole('button',{name:"Metadata'yı Temizle",exact:true}).isDisabled(),'Cleaning unblocked');
   const remove = page.getByRole('button',{name:'Yalnız C2PA’yı Kaldır',exact:true});
+  const scopeNote = page.locator('#c2pa-scope-note');
+  assert(await scopeNote.isVisible(),'C2PA scope note missing');
+  assert(await page.getByRole('dialog').count()===0 || !await page.getByRole('dialog').first().isVisible(),'C2PA removal must not open a consent dialog');
   await remove.click();
-  const dialog = page.getByRole('dialog',{name:'Yalnız gömülü C2PA kaydını kaldır'});
-  assert(await dialog.isVisible(),'Separate C2PA consent missing');
-  assert(await dialog.getByRole('button',{name:'Vazgeç',exact:true}).evaluate(el=>el===document.activeElement),'Consent initial focus');
-  await page.keyboard.press('Escape');
-  assert(!await dialog.isVisible(),'Escape did not dismiss');
-  assert(await remove.isEnabled(),'Dismiss locked action');
-  await remove.click();
-  await dialog.getByRole('button',{name:'Yetkim var, yalnız C2PA’yı kaldır',exact:true}).click();
   await page.getByRole('button',{name:'C2PA Kaldırılmış Dosyayı İndir',exact:true}).waitFor();
   assert(await page.locator('#footprint-title').innerText()==='Gelişmiş işlem çıktısı doğrulandı','C2PA output remains in scanning state');
   assert(await results.locator('.panel-heading .chip').innerText()==='Temizlenmiş çıktı','C2PA output mislabeled as source');
@@ -93,9 +88,8 @@ async (page) => {
   }
   await upload(true,false,true);
   assert(await page.getByRole('status').getByText('Gömülü kaynak kaydı ve ona bağlı yerel işaretçi Remove ile kaldırılabilir.',{exact:true}).isVisible(),'Local decision missing');
+  assert(/yerel XMP işaretçisi/.test(await scopeNote.innerText()),'Local XMP scope note missing');
   await remove.click();
-  assert(await dialog.getByText(/yerel XMP provenance alanı/).count()>0,'Local XMP consent missing');
-  await dialog.getByRole('button',{name:'Yetkim var, yalnız C2PA’yı kaldır',exact:true}).click();
   await page.getByRole('heading',{name:'Gömülü C2PA ve ilişkili yerel XMP işaretçisi kaldırıldı',exact:true}).waitFor();
   assert(await page.locator('#footprint-title').innerText()==='Gelişmiş işlem çıktısı doğrulandı','Local XMP output remains in scanning state');
   assert(await results.locator('.panel-heading .chip').innerText()==='Temizlenmiş çıktı','Local XMP output mislabeled as source');
