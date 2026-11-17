@@ -2,6 +2,7 @@
 
 ## Web — yayımlanmamış
 
+- Dosya bilgilerinde „AI aracı (beyan)": dosyanın kendi C2PA/metadata kayıtlarında adı geçen AI aracı (ör. Google Gemini, ChatGPT, Midjourney, Adobe Firefly, Stable Diffusion) seçili dosya kartında ve Dosya Bilgileri bölümünde gösterilir. Doğrulanmamış beyandır; kayıt yoksa „Dosyada belirtilmemiş" yazar.
 - C2PA kaldırma onayı tek kurala bağlandı: `Remove AI Footprint` ve `Yalnız C2PA’yı Kaldır` ayrı onay penceresi açmaz; kapsam ve kaybolan bilgiler düğmenin yanında yazılır. Hak/telif onayı gerektiren metadata temizliği onay penceresini korur.
 - Tüm indirilen ve diske yazılan çıktılar `<ad>-removed.<uzantı>` adını alır.
 - Sonuç ekranları piksel içi filigranların (ör. SynthID) kaldırılmadığını açıkça söyler; başlıklar kaldırılan kapsamı tam adlandırır.

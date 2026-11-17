@@ -9,7 +9,7 @@ const file = { name: 'sample.png', size: 1200 };
 test('empty scan has only actual file fields and no AI evidence', () => {
   const result = describeResults(base, file);
   assert.equal(result.aiCount, 0);
-  assert.equal(result.fields.length, 7);
+  assert.equal(result.fields.length, 8); // 7 file fields + declared AI tool
   assert.equal(result.sectionCount, 1);
   assert.equal(result.provenance, false);
   assert.equal(aiEvidence('Adobe Photoshop; camera; Applied SynthID watermark'), false);
@@ -17,8 +17,8 @@ test('empty scan has only actual file fields and no AI evidence', () => {
 
 test('AI claim counts one actual record, not individual keywords', () => {
   const result = describeResults({ ...base, records: [{ id: 'x', kind: 'XMP', bytes: 42, preview: 'trainedAlgorithmicMedia; Stable Diffusion; prompt: landscape', status: 'protected', reason: 'test', requiresRightsConsent: false }] }, file);
-  assert.equal(result.aiCount, 1);
-  assert.equal(result.fields.length, 8);
+  assert.equal(result.aiCount, 1); // the declared-tool file field is not a metadata block
+  assert.equal(result.fields.length, 9);
   assert.equal(result.fields.filter(field => field.category === 'production').length, 1);
 });
 

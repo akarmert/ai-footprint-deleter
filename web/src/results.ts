@@ -1,6 +1,7 @@
 import type { MediaScan } from './protocol';
 import type { MetadataRecord } from './engine';
 import { AI_DIGITAL_SOURCE_TERM_PATTERN, AI_DIGITAL_SOURCE_TYPE_URI_PATTERN } from './ai-source-types.ts';
+import { describeAiTools, detectAiTools } from './ai-generator.ts';
 
 export const categories = [
   { id: 'c2pa', label: 'C2PA / Kaynak Bilgisi', title: 'C2PA / Kaynak Bilgisi' },
@@ -35,6 +36,8 @@ export function describeResults(scan: MediaScan, file: { name: string; size: num
   add('megapixels', 'Megapixels', (scan.width * scan.height / 1000000).toLocaleString('tr-TR', { maximumFractionDigits: 3 }), 'file');
   add('orientation', 'Yön', scan.orientation === null ? 'Bilinmiyor' : String(scan.orientation), 'file');
   add('alpha', 'Alpha', scan.alpha ? 'Var' : 'Yok', 'file');
+  const tools = describeAiTools(detectAiTools(scan));
+  fields.push({ id: 'ai-tool', label: 'AI aracı (beyan)', value: tools.found ? tools.detail : `${tools.headline}. ${tools.detail}`, category: 'file', ai: tools.found });
   if (provenance) add('c2pa-status', 'C2PA Status', scan.c2pa, 'c2pa');
   for (const record of scan.records) {
     const value = record.preview;
@@ -53,5 +56,5 @@ export function describeResults(scan: MediaScan, file: { name: string; size: num
   const c2paSources = scan.provenance?.manifests.flatMap(manifest => manifest.aiSources) ?? [];
   const declarationCount = textDeclarations.length + c2paSources.length;
   const aiState = declarationCount ? 'declared' : provenance || structural?.incomplete || structural?.state === 'METADATA_HINTS' ? 'uncertain' : 'not-found';
-  return { fields, provenance, aiCount: fields.filter(field => field.ai).length, declarationCount, aiState, textDeclarations, c2paSources, sectionCount: categories.filter(category => fields.some(field => field.category === category.id)).length };
+  return { fields, provenance, aiCount: fields.filter(field => field.ai && field.record).length, declarationCount, aiState, textDeclarations, c2paSources, sectionCount: categories.filter(category => fields.some(field => field.category === category.id)).length };
 }
