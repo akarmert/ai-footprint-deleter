@@ -6,7 +6,7 @@ import type { MediaScan, Response, VerifiedOutput, VideoResponse } from './proto
 import { chooseOutput, chooseTemporaryDirectory, supportsDiskOutput } from './output';
 import { MetadataResults } from './MetadataResults';
 import { Header, Hero, HomeInformation, Footer } from './components/Home';
-import { ConsentDialog, C2paConsentDialog } from './components/ConsentDialog';
+import { ConsentDialog } from './components/ConsentDialog';
 import type { FootprintResult } from './footprints';
 import { Atmosphere } from './components/Atmosphere';
 import { FileDropzone, FileDetails, CleaningModeSelector, ScanStatus, ScanSummary, VerificationResult, FootprintSummary, FootprintDetails, footprintStatuses, footprintReason } from './components/Workspace';
@@ -18,23 +18,20 @@ function App() {
   const [output, setOutput] = useState<VerifiedOutput>();
   const confirmation = useRef<HTMLDialogElement>(null);
   const [pendingConsent, setPendingConsent] = useState(false);
-  const c2paConfirmation = useRef<HTMLDialogElement>(null);
-  const [pendingC2paConsent, setPendingC2paConsent] = useState(false);
   const [footprintResult, setFootprintResult] = useState<FootprintResult>();
-  const operation = useRef<'metadata-consent' | 'c2pa-consent' | 'clean' | undefined>(undefined);
+  const operation = useRef<'metadata-consent' | 'clean' | undefined>(undefined);
   const consentTrigger = useRef<HTMLElement | null>(null);
   const focusReturn = useRef<number | undefined>(undefined);
-  function finishConsent(kind: 'metadata-consent' | 'c2pa-consent') {
+  function finishConsent(kind: 'metadata-consent') {
     if (operation.current === kind) { operation.current = undefined; focusReturn.current = generation.current; }
   }
   function dismissConsent() { finishConsent('metadata-consent'); setPendingConsent(false); }
-  function dismissC2paConsent() { finishConsent('c2pa-consent'); setPendingC2paConsent(false); }
   useEffect(() => {
-    if (pendingConsent || pendingC2paConsent || focusReturn.current === undefined) return;
+    if (pendingConsent || focusReturn.current === undefined) return;
     const version = focusReturn.current;
     focusReturn.current = undefined;
     if (generation.current === version && !operation.current && consentTrigger.current?.isConnected) consentTrigger.current.focus();
-  }, [pendingConsent, pendingC2paConsent]);
+  }, [pendingConsent]);
   const [mode, setMode] = useState<CleaningMode>('safe');
   function changeMode(next: CleaningMode) {
     if (busy || saving || committing || operation.current || output || footprintResult || videoDone) return;
@@ -115,7 +112,7 @@ function App() {
     worker.current = null; clearTimeout(timer.current);
   }
   useEffect(() => () => { stop(); revoke(); }, []);
-  function clear() { if (committingRef.current) return; cancelling.current = false; generation.current++; pendingResultScroll.current = undefined; setVideoDone(false); setSaving(false); setUncertainCommit(false); stop(); revoke(); setFile(undefined); setTemporaryDirectory(undefined); setScan(undefined); setOutput(undefined);  confirmation.current?.close(); c2paConfirmation.current?.close(); operation.current = undefined; setPendingConsent(false); setPendingC2paConsent(false); setFootprintResult(undefined); setBusy(''); setError(''); if (input.current) input.current.value = ''; }
+  function clear() { if (committingRef.current) return; cancelling.current = false; generation.current++; pendingResultScroll.current = undefined; setVideoDone(false); setSaving(false); setUncertainCommit(false); stop(); revoke(); setFile(undefined); setTemporaryDirectory(undefined); setScan(undefined); setOutput(undefined);  confirmation.current?.close(); operation.current = undefined; setPendingConsent(false); setFootprintResult(undefined); setBusy(''); setError(''); if (input.current) input.current.value = ''; }
   function cancel() {
     if (committingRef.current) return;
     if (videoWorker.current && worker.current && busy) {
@@ -146,7 +143,7 @@ function App() {
     }, 120000);
   }
   function select(files: FileList | null) {
-    if ((videoWorker.current && busy) || committingRef.current || operation.current === 'metadata-consent' || operation.current === 'c2pa-consent') return;
+    if ((videoWorker.current && busy) || committingRef.current || operation.current === 'metadata-consent') return;
     const list = files ? Array.from(files) : []; clear();
     if (!list.length) return;
     if (list.length !== 1) { setError('Bir seferde yalnız bir dosya seçin.'); return; }
@@ -204,7 +201,7 @@ function App() {
   const c2paRemovable = !!scan && (scan.format === 'JPEG' || scan.format === 'PNG' || scan.format === 'WebP') && scan.c2paRemovable === true;
   const imageScan = scan && 'footprintPlan' in scan ? scan : undefined;
   const footprintPlan = imageScan?.footprintPlan;
-  const confirming = pendingConsent || pendingC2paConsent;
+  const confirming = pendingConsent;
   const directMetadataIds = footprintPlan?.metadataIds.filter(id => !imageScan?.records.find(record => record.id === id)?.requiresRightsConsent) ?? [];
   const directRemovable = !!footprintPlan && !footprintPlan.blocked && (footprintPlan.removeC2pa || directMetadataIds.length > 0);
   function requestFootprints() {
@@ -213,14 +210,8 @@ function App() {
     revoke(); setOutput(undefined); setFootprintResult(undefined); setError(''); setBusy('clean'); expire(worker.current);
     worker.current.postMessage({ type: 'clean-footprints', c2paConsent: true, rightsConsent: false });
   }
-  function requestC2paRemoval() {
-    if (!c2paRemovable || !worker.current || busy || saving || committing || operation.current || output) return;
-    consentTrigger.current = document.activeElement as HTMLElement;
-    operation.current = 'c2pa-consent';
-    setPendingC2paConsent(true); c2paConfirmation.current?.showModal();
-  }
   function removeC2pa() {
-    if (operation.current !== 'c2pa-consent' || !c2paRemovable || !worker.current || busy || saving || committing || output) return;
+    if (!c2paRemovable || !worker.current || busy || saving || committing || operation.current || output) return;
     operation.current = 'clean';
     revoke(); setOutput(undefined); setFootprintResult(undefined); setVideoDone(false); setError(''); setBusy('clean'); expire(worker.current);
     worker.current.postMessage({ type: 'clean-c2pa', c2paConsent: true });
@@ -245,7 +236,7 @@ function App() {
       if (scan.format === 'MP4' || scan.format === 'MOV') {
         if (!supportsDiskOutput()) throw new Error('Video çıktısı için HTTPS üzerinde güncel Chrome/Edge ve doğrudan disk yazımı gerekir. Blob indirme alternatifi yoktur.');
         setSaving(true);
-        const handle = await chooseOutput(`${(file?.name ?? 'video').replace(/\.[^.]*$/, '')}-temiz.${scan.format.toLowerCase()}`);
+        const handle = await chooseOutput(`${(file?.name ?? 'video').replace(/\.[^.]*$/, '')}-removed.${scan.format.toLowerCase()}`);
         if (generation.current !== version || worker.current !== active) return;
         setBusy('clean'); expire(active);
         active.postMessage({ type: 'clean', ids: selected, rightsConsent: consent, handle, temporaryDirectory });
@@ -264,7 +255,7 @@ function App() {
     const base = file.name.replace(/\.[^.]*$/, '').replace(/[\\/:*?"<>|\x00-\x1f]/g, '_').slice(0,120) || 'gorsel';
     const originalExtension = file.name.match(/\.(jpe?g|png|webp)$/i)?.[1];
     const extension = output.footprintResult && originalExtension ? originalExtension : output.scan.format === 'JPEG' ? 'jpg' : output.scan.format.toLowerCase();
-    link.download = `${base}-${output.footprintResult ? 'removed' : output.operation === 'c2pa-store-removal' ? 'c2pa-kaldirildi' : 'temiz'}.${extension}`;
+    link.download = `${base}-removed.${extension}`;
     link.click();
   }
   const displayedScan = output?.scan ?? scan;
@@ -274,7 +265,6 @@ function App() {
   return <div className="shell">
     <Atmosphere paused={!!busy || saving || committing} />
     <ConsentDialog dialog={confirmation} mode={mode} dismiss={dismissConsent} confirm={() => void clean(true)} />
-    <C2paConsentDialog dialog={c2paConfirmation} dismiss={dismissC2paConsent} confirm={removeC2pa} />
     <a className="skip-link" href="#workspace">Dosya analizine geç</a>
     <Header />
     <main>
@@ -302,7 +292,7 @@ function App() {
            <h3>{output ? 'Çıktıda kalan metadata kayıtları' : 'Kaynak dosyanın metadata kayıtları'}</h3>
           {scan && <><ScanSummary total={displayedScan?.records.length ?? 0} removable={displayedEligible.length} preserved={preserved} />{output ? <p className="scan-note">Bu liste yeniden taranan çıktıda korunan kayıtları gösterir; temizleme seçenekleri kaynak dosyaya aittir.</p> : scan.cleaningBlocked ? <p className="warning">Kaynak/imza kaydı mevcut, belirsiz veya yapı güvenle işlenemiyor: metadata temizliği engellendi. Yalnız desteklenen gömülü C2PA deposu için ayrı kaldırma düğmesi sunulur. İmza doğrulama yapılmaz.</p> : !eligible.length ? <p className="warning">{scan.records.length ? 'Kaldırılabilecek metadata bulunamadı. Renk profili, görüntü yönü veya desteklenmeyen kayıtlar güvenlik için korunuyor.' : 'Desteklenen metadata kaydı bulunamadı; temizlenecek kayıt yok. Bu, tüm metadata’nın yokluğu garantisi değildir.'}</p> : <p className="scan-note">Temizlenecek kayıtlar seçilen moda göre belirlenir. Hak/telif bilgisi için gerektiğinde onay istenir.</p>}</>}
           {scan && <CleaningModeSelector mode={mode} disabled={!!busy || saving || committing || confirming || !!output || !!footprintResult || videoDone} changeMode={changeMode} video={scan.format === 'MP4' || scan.format === 'MOV'} />}
-          <div className="actions"><button className="primary" onClick={requestClean} disabled={!scan || !!busy || saving || committing || confirming || !eligible.length || !!output || videoDone}>Metadata'yı Temizle</button>{c2paRemovable && <button onClick={requestC2paRemoval} disabled={!!busy || saving || committing || confirming || !!output}>Yalnız C2PA’yı Kaldır</button>}</div>
+          <div className="actions"><button className="primary" onClick={requestClean} disabled={!scan || !!busy || saving || committing || confirming || !eligible.length || !!output || videoDone}>Metadata'yı Temizle</button>{c2paRemovable && <button onClick={removeC2pa} disabled={!!busy || saving || committing || confirming || !!output} aria-describedby="c2pa-scope-note">Yalnız C2PA’yı Kaldır</button>}</div>{c2paRemovable && <p className="scan-note" id="c2pa-scope-note">Yalnız C2PA’yı Kaldır: üst düzey gömülü C2PA deposu ve varsa yalnız ona bağlı tek yerel XMP işaretçisi kaldırılır. Bu depodaki üretici, telif, lisans ve Actions bilgileri çıktıda kaybolur; diğer metadata korunur. İmzalar doğrulanmaz; harici manifestler ve görünmez filigranlar etkilenmez.</p>}
           {scan && file && <MetadataResults key={`${file.name}:${file.lastModified}:${file.size}:${output ? 'output' : 'source'}`} scan={displayedScan!} origin={output ? 'output' : 'source'} file={output ? new File([output.blob], file.name, { type: output.blob.type, lastModified: file.lastModified }) : file} />}
           {scan && <details className="metadata"><summary>Temizleme politikası ve doğrulama ayrıntıları</summary><div>{displayedScan?.records.map(record => <article className="record" key={record.id}><div className="record-heading"><strong>{record.kind}</strong><span>{displayedEligible.some(item => item.id === record.id) ? record.requiresRightsConsent ? 'Yetki onayıyla' : 'Temizlenebilir' : 'Korunur'} · {record.bytes.toLocaleString('tr-TR')} bayt</span></div><p>{record.reason}</p>{record.preview && <pre>{record.preview}</pre>}</article>)}</div>{output && <details><summary>Payload SHA-256</summary><code>{output.payloadHash}</code></details>}</details>}
           {(scan?.format === 'MP4' || scan?.format === 'MOV') && <><p className="warning">Video kaydı güncel masaüstü Chrome/Edge, HTTPS (veya localhost), File System Access ve yeterli geçici yerel alan gerektirir. {supportsDiskOutput() ? 'Dosya yeniden doğrulandıktan sonra ayrı hedefe kaydedilir.' : 'Bu tarayıcı doğrudan disk kaydını desteklemiyor; video çıktısı kaydedilemez. Blob indirme alternatifi yoktur.'}</p><details className="output"><summary>Geçici video alanı ve disk sınırları</summary><p>Varsayılan OPFS kotası işlem öncesinde tahmin edilir; tahmin gerçek boş alan garantisi değildir. Kota hatasında veya büyük videolarda ayrı bir yerel klasör seçebilirsiniz. Bu klasöre geçici medya yazılır ve işlem sonunda silinir; çökmede kalabilir. Kaynak ve hedef için ayrı dosyalar kullanın.</p><button disabled={!!busy || saving || committing} onClick={selectTemporaryDirectory}>Geçici yerel klasör seç</button>{temporaryDirectory && <><p>Seçilen klasör: {temporaryDirectory.name}</p><button disabled={!!busy || saving || committing} onClick={() => setTemporaryDirectory(undefined)}>OPFS kullan</button></>}</details></>}

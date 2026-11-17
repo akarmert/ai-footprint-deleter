@@ -1,5 +1,22 @@
 # Changelog
 
+## Web — yayımlanmamış
+
+- C2PA kaldırma onayı tek kurala bağlandı: `Remove AI Footprint` ve `Yalnız C2PA’yı Kaldır` ayrı onay penceresi açmaz; kapsam ve kaybolan bilgiler düğmenin yanında yazılır. Hak/telif onayı gerektiren metadata temizliği onay penceresini korur.
+- Tüm indirilen ve diske yazılan çıktılar `<ad>-removed.<uzantı>` adını alır.
+- Sonuç ekranları piksel içi filigranların (ör. SynthID) kaldırılmadığını açıkça söyler; başlıklar kaldırılan kapsamı tam adlandırır.
+- SSS, kök README ve proje özeti güncel C2PA akışına göre düzeltildi; görsel Worker'daki eski „Faz 2" hata metni değiştirildi.
+- Altyapı: GitHub Actions web CI (Node 24, `npm ci` / `npm test` / `npm run build`), `CLAUDE.md`, `.gitattributes` (LF), `.kilo` oturum günlükleri depodan çıkarıldı.
+
+## Web 0.1.0 — 2026-11
+
+- Tarayıcı içinde çalışan React/TypeScript/Vite web uygulaması ve yalnız statik içerik sunan Node sunucusu (Docker/Railway).
+- JPEG/PNG/WebP metadata taraması ve yeniden kodlamasız, çıktısı yeniden doğrulanan temizlik; Güvenli ve Kapsamlı modlar.
+- Dar kapsamlı MP4/MOV video taraması ve OPFS/geçici klasör üzerinden doğrulanmış disk çıktısı.
+- JPEG C2PA manifest okuma; yapısal doğrulamalı gömülü C2PA deposu kaldırma (JPEG/PNG/WebP) ve bağlı tek yerel XMP provenance referansının atomik kaldırılması.
+- Birleşik AI footprint akışı: açık AI beyanı, metadata ipucu ve provenance ayrımı; `REMOVED_VERIFIED` / `PARTIALLY_REMOVED` / `BLOCKED` sonuçları.
+- Koyu temalı modüler arayüz, yıldız alanı arka planı ve azaltılmış hareket desteği.
+
 ## 0.2.0b1 — kabul takibi — 2026-10-12
 
 - Frekans paneli 980×720 desteği, yatay taşmayı kaldıran kontrol yerleşimi ve Türkçe metrikler.
