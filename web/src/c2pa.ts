@@ -1,5 +1,6 @@
 import { decodeCbor, type CborValue } from './cbor.ts';
 import { validateC2paStore } from './c2pa-structure.ts';
+import { isAiDigitalSourceType } from './ai-source-types.ts';
 import type { C2paManifest, C2paReport } from './c2pa-types';
 
 const MAX = 4 * 1024 * 1024;
@@ -15,42 +16,17 @@ type Box = { type: string; data: Uint8Array; children: Box[]; uuid?: string; lab
 
 export function readC2pa(data: Uint8Array, format: string, detected: boolean, now: () => number = () => performance.now()): C2paReport {
   const report = (status: C2paReport['status'], reason: string, manifests: C2paManifest[] = []): C2paReport => ({ status, reason, manifests, signatureVerification: 'not-performed' });
-  if (format !== 'JPEG') return report(detected ? 'unsupported' : 'absent', detected ? 'Bu kapsayıcı için C2PA okuma desteklenmiyor.' : 'Desteklenen C2PA kaydı algılanmadı; yokluk garantisi değildir.');
+  if (format !== 'JPEG' && format !== 'PNG' && format !== 'WebP') return report(detected ? 'unsupported' : 'absent', detected ? 'Bu kapsayıcı için C2PA okuma desteklenmiyor.' : 'Desteklenen C2PA kaydı algılanmadı; yokluk garantisi değildir.');
+  // PNG/WebP store detection is authoritative in the engine; do not re-parse (and possibly report
+  // "unreadable") a file in which no top-level C2PA chunk was detected.
+  if (!detected && format !== 'JPEG') return report('absent', 'Desteklenen C2PA kaydı algılanmadı; yokluk garantisi değildir.');
   const deadline = now() + 250;
   let operations = 0, boxes = 0;
   const check = () => { if (++operations > 100000 || now() > deadline) fail('C2PA işlem/süre sınırı'); };
   try {
-    if (data.length > 128 * 1024 * 1024 || data[0] !== 255 || data[1] !== 216) fail('JPEG sınırı/başlığı');
-    let offset = 2, group: { instance: number; size: number; header: Uint8Array; parts: Uint8Array[]; bytes: number; sequence: number } | undefined;
-    let groupEnded = false;
-    while (offset < data.length) {
-      check();
-      if (data[offset++] !== 255) fail('JPEG marker sınırı');
-      while (data[offset] === 255) { offset++; check(); }
-      const marker = data[offset++];
-      if (marker === 218 || marker === 217) break;
-      if (marker === 1 || marker >= 208 && marker <= 215) continue;
-      if (offset + 2 > data.length) fail('JPEG eksik uzunluk');
-      const length = (data[offset] << 8) | data[offset + 1];
-      if (length < 2 || offset + length > data.length) fail('JPEG uzunluğu');
-      const payload = data.subarray(offset + 2, offset + length); offset += length;
-      if (marker !== 235) { if (group) groupEnded = true; continue; }
-      if (groupEnded) fail('APP11 parçaları bitişik değil');
-      if (payload.length < 16 || payload[0] !== 74 || payload[1] !== 80) fail('Desteklenmeyen APP11 başlığı');
-      const instance = (payload[2] << 8) | payload[3], sequence = u32(payload, 4), size = u32(payload, 8);
-      if (four(payload, 12) !== 'jumb' || size < 8 || size > MAX) fail('APP11 JUMBF boyutu/türü desteklenmiyor');
-      if (!group) {
-        if (sequence !== 1) fail('APP11 ilk sıra numarası');
-        group = { instance, size, header: payload.subarray(8, 16), parts: [], bytes: 8, sequence: 0 };
-      }
-      if (group.instance !== instance || sequence !== group.sequence + 1 || size !== group.size || group.header.some((value, i) => value !== payload[8 + i])) fail('APP11 parçaları eksik, tekrarlı veya tutarsız');
-      if (group.parts.length >= 128 || group.bytes + payload.length - 16 > size || payload.length === 16) fail('APP11 parça sınırı/uzunluğu');
-      group.parts.push(payload.subarray(16)); group.bytes += payload.length - 16; group.sequence = sequence;
-    }
-    if (!group) return report(detected ? 'unreadable' : 'absent', detected ? 'C2PA / provenance çözümlenemedi.' : 'C2PA APP11 bulunamadı; yokluk garantisi değildir.');
-    if (group.bytes !== group.size) fail('APP11 eksik toplam uzunluk');
-    const joined = new Uint8Array(group.size); joined.set(group.header); let position = 8;
-    for (const part of group.parts) { check(); joined.set(part, position); position += part.length; }
+    if (data.length > 128 * 1024 * 1024) fail('C2PA dosya boyutu sınırı');
+    const joined = format === 'JPEG' ? jpegStore(data, check) : format === 'PNG' ? pngStore(data, check) : webpStore(data, check);
+    if (!joined) return report(detected ? 'unreadable' : 'absent', detected ? 'C2PA / provenance çözümlenemedi.' : 'Gömülü C2PA deposu bulunamadı; yokluk garantisi değildir.');
     const parse = (bytes: Uint8Array, depth: number): Box[] => {
       if (depth > 12) fail('JUMBF derinlik sınırı');
       const result: Box[] = []; let pos = 0;
@@ -130,15 +106,94 @@ export function readC2pa(data: Uint8Array, format: string, detected: boolean, no
           const description = string(action.get('description'));
           const source = `${manifest.label} / ${assertion.label}`;
           manifest.actions.push({ action: name, sourceType, software, description, source });
-          if (sourceType === 'http://cv.iptc.org/newscodes/digitalsourcetype/trainedAlgorithmicMedia') {
+          if (isAiDigitalSourceType(sourceType)) {
             if (!manifest.aiSources.includes(source)) manifest.aiSources.push(source);
           }
         }
       }
       manifests.push(manifest);
     }
-    return report('readable-unverified', 'Desteklenen JPEG C2PA alanları okundu. İmza, assertion bağlantıları, trust ve içerik hash doğrulanmadı; bunlar doğrulanmamış kaynak beyanlarıdır.', manifests);
+    return report('readable-unverified', `Desteklenen ${format} C2PA alanları okundu. İmza, assertion bağlantıları, trust ve içerik hash doğrulanmadı; bunlar doğrulanmamış kaynak beyanlarıdır.`, manifests);
   } catch (error) {
     return report('unreadable', error instanceof Error ? error.message : 'C2PA çözümlenemedi');
   }
+}
+
+// JPEG: reassemble the APP11 JUMBF fragments of the first (only) C2PA group.
+function jpegStore(data: Uint8Array, check: () => void): Uint8Array | undefined {
+    if (data[0] !== 255 || data[1] !== 216) fail('JPEG sınırı/başlığı');
+    let offset = 2, group: { instance: number; size: number; header: Uint8Array; parts: Uint8Array[]; bytes: number; sequence: number } | undefined;
+    let groupEnded = false;
+    while (offset < data.length) {
+      check();
+      if (data[offset++] !== 255) fail('JPEG marker sınırı');
+      while (data[offset] === 255) { offset++; check(); }
+      const marker = data[offset++];
+      if (marker === 218 || marker === 217) break;
+      if (marker === 1 || marker >= 208 && marker <= 215) continue;
+      if (offset + 2 > data.length) fail('JPEG eksik uzunluk');
+      const length = (data[offset] << 8) | data[offset + 1];
+      if (length < 2 || offset + length > data.length) fail('JPEG uzunluğu');
+      const payload = data.subarray(offset + 2, offset + length); offset += length;
+      if (marker !== 235) { if (group) groupEnded = true; continue; }
+      if (groupEnded) fail('APP11 parçaları bitişik değil');
+      if (payload.length < 16 || payload[0] !== 74 || payload[1] !== 80) fail('Desteklenmeyen APP11 başlığı');
+      const instance = (payload[2] << 8) | payload[3], sequence = u32(payload, 4), size = u32(payload, 8);
+      if (four(payload, 12) !== 'jumb' || size < 8 || size > MAX) fail('APP11 JUMBF boyutu/türü desteklenmiyor');
+      if (!group) {
+        if (sequence !== 1) fail('APP11 ilk sıra numarası');
+        group = { instance, size, header: payload.subarray(8, 16), parts: [], bytes: 8, sequence: 0 };
+      }
+      if (group.instance !== instance || sequence !== group.sequence + 1 || size !== group.size || group.header.some((value, i) => value !== payload[8 + i])) fail('APP11 parçaları eksik, tekrarlı veya tutarsız');
+      if (group.parts.length >= 128 || group.bytes + payload.length - 16 > size || payload.length === 16) fail('APP11 parça sınırı/uzunluğu');
+      group.parts.push(payload.subarray(16)); group.bytes += payload.length - 16; group.sequence = sequence;
+    }
+    if (!group) return undefined;
+    if (group.bytes !== group.size) fail('APP11 eksik toplam uzunluk');
+    const joined = new Uint8Array(group.size); joined.set(group.header); let position = 8;
+    for (const part of group.parts) { check(); joined.set(part, position); position += part.length; }
+    return joined;
+}
+
+// PNG: the single top-level caBX chunk before IDAT holds the JUMBF store.
+function pngStore(data: Uint8Array, check: () => void): Uint8Array | undefined {
+  const signature = [137, 80, 78, 71, 13, 10, 26, 10];
+  if (data.length < 8 || signature.some((value, i) => data[i] !== value)) fail('PNG imzası');
+  let offset = 8, store: Uint8Array | undefined, seenIdat = false, chunks = 0;
+  while (offset < data.length) {
+    check();
+    if (++chunks > 100000 || offset + 12 > data.length) fail('PNG chunk sınırı');
+    const length = u32(data, offset), type = four(data, offset + 4);
+    if (length > data.length - offset - 12) fail('PNG chunk uzunluğu');
+    const payload = data.subarray(offset + 8, offset + 8 + length); offset += 12 + length;
+    if (type === 'IDAT') seenIdat = true;
+    else if (type === 'caBX') {
+      if (store || seenIdat) fail('PNG caBX sayısı/konumu');
+      if (length < 8 || length > MAX) fail('caBX boyutu');
+      store = payload;
+    } else if (type === 'IEND') break;
+  }
+  return store;
+}
+
+// WebP: the single top-level RIFF 'C2PA' chunk holds the JUMBF store.
+function webpStore(data: Uint8Array, check: () => void): Uint8Array | undefined {
+  if (data.length < 12 || four(data, 0) !== 'RIFF' || four(data, 8) !== 'WEBP') fail('WebP RIFF başlığı');
+  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  const riffEnd = view.getUint32(4, true) + 8;
+  if (riffEnd > data.length || riffEnd < 12) fail('WebP RIFF uzunluğu');
+  let offset = 12, store: Uint8Array | undefined, chunks = 0;
+  while (offset < riffEnd) {
+    check();
+    if (++chunks > 100000 || offset + 8 > riffEnd) fail('WebP chunk sınırı');
+    const type = four(data, offset), length = view.getUint32(offset + 4, true);
+    if (length > riffEnd - offset - 8) fail('WebP chunk uzunluğu');
+    const payload = data.subarray(offset + 8, offset + 8 + length); offset += 8 + length + (length & 1);
+    if (type === 'C2PA') {
+      if (store) fail('Birden çok WebP C2PA chunk');
+      if (length < 8 || length > MAX) fail('WebP C2PA boyutu');
+      store = payload;
+    }
+  }
+  return store;
 }

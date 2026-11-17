@@ -133,7 +133,7 @@ Sunucu yalnız GET/HEAD kabul eder; diğer yöntemler 405 ile reddedilir.
 | `web/src/media.ts` | Dosya seçimi sınırlarını, format başlığı kontrollerini ve parça okuma yardımcılarını sağlar. |
 | `web/src/output.ts` | Hedef dosya ve geçici klasör seçimini, sıralı yazma sözleşmesini sağlar. |
 | `web/src/protocol.ts` | UI ile Worker arasındaki istek, yanıt ve doğrulanmış çıktı tiplerini tanımlar. |
-| `web/src/c2pa.ts` | Desteklenen JPEG APP11/JUMBF/CBOR alt kümesinden salt okunur C2PA alanlarını çıkarır. |
+| `web/src/c2pa.ts` | Desteklenen JPEG APP11, PNG `caBX` ve WebP `C2PA` depolarındaki JUMBF/CBOR alt kümesinden salt okunur C2PA alanlarını çıkarır. |
 | `web/src/cbor.ts` | C2PA okuyucusunun kullandığı sınırlandırılmış CBOR çözümlemesini sağlar. |
 | `web/src/c2pa-types.ts` | C2PA raporu ve manifest veri tiplerini tanımlar. |
 | `web/src/results.ts` | Tarama verilerini kategori, sayaç ve AI beyanı görünümüne dönüştürür. |
@@ -181,7 +181,7 @@ Video temizliği medya yeniden kodlaması yapmaz; aynı uzunlukta boşaltma ile 
 - Web uygulaması C2PA imzasını, sertifika güvenini, assertion bağlantılarını veya içerik hash'ini kriptografik olarak doğrulamaz.
 - Algılanan veya belirsiz provenance, normal metadata temizliğini engeller.
 - Web, desteklenen gömülü C2PA depolarını (JPEG APP11, PNG `caBX`, WebP `C2PA`) yapısal doğrulamadan sonra kaldırabilir: `Remove AI Footprint` akışında veya gelişmiş `Yalnız C2PA’yı Kaldır` ile, ayrı onay penceresi olmadan. JPEG MPF, harici/çoğul referanslar ve bozuk yapılar desteklenmez; videoda C2PA kaldırma yoktur.
-- C2PA okuyucusu JPEG APP11/JUMBF/CBOR alt kümesiyle sınırlıdır; PNG/WebP/video C2PA içeriğini çözümlemez.
+- C2PA okuyucusu JPEG APP11, PNG `caBX` ve WebP `C2PA` depolarındaki JUMBF/CBOR alt kümesiyle sınırlıdır; video C2PA içeriğini çözümlemez.
 - `trainedAlgorithmicMedia` gibi desteklenen standart kaynak beyanları ile araç/prompt ipuçları ayrı değerlendirilir.
 - XMP beyanı araması ilk 512 karakterlik önizlemeyle sınırlıdır ve tam yapısal XML doğrulaması değildir.
 - “AI üretim beyanı bulunamadı” ifadesi dosyanın AI üretimi olmadığını kanıtlamaz.

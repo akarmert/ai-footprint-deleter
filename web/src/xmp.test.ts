@@ -209,3 +209,17 @@ test('stale or forged spans are never applied', () => {
   assert.throws(() => removeXmpReference(input, { ...ref, value: 'forged' }))
   assert.throws(() => removeXmpReference(bytes(packet('')), ref))
 })
+
+test('XMP DigitalSourceType AI list includes AI-edited composites and only exact IPTC URIs', () => {
+  const iptcExt = 'http://iptc.org/std/Iptc4xmpExt/2008-02-29/'
+  const doc = (value: string) => bytes(`<r:RDF xmlns:r="${rdf}" xmlns:i="${iptcExt}"><r:Description i:DigitalSourceType="${value}"/></r:RDF>`)
+  for (const term of ['trainedAlgorithmicMedia', 'compositeWithTrainedAlgorithmicMedia']) {
+    const value = `http://cv.iptc.org/newscodes/digitalsourcetype/${term}`
+    const result = analyzeXmp(doc(value))
+    assert.equal(result.status, 'valid', result.reason)
+    assert.deepEqual(result.aiSources, [value])
+  }
+  for (const value of ['http://cv.iptc.org/newscodes/digitalsourcetype/algorithmicMedia', 'http://example.com/trainedAlgorithmicMedia', 'http://cv.iptc.org/newscodes/digitalsourcetype/trainedAlgorithmicMediaX']) {
+    assert.deepEqual(analyzeXmp(doc(value)).aiSources ?? [], [], value)
+  }
+})

@@ -1,13 +1,14 @@
 // Run with Playwright browser_run_code after production build + npm start.
 // Generate the small real fixture first (ffmpeg installed locally):
 // ffmpeg -f lavfi -i testsrc2=size=96x64:rate=10 -f lavfi -i sine=frequency=440:sample_rate=44100 -t 1 -c:v libx264 -c:a aac -metadata title=Phase3 -movflags +faststart phase3-browser.mp4
-// Adjust fixture path below. Native OS picker is replaced by a REAL OPFS handle;
+// Set AFC_VIDEO_FIXTURE to the generated MP4's absolute path. Native OS picker is replaced by a REAL OPFS handle;
 // this exercises structured cloning + actual Worker/disk operations, NOT native permission UI.
 async page => {
   const context = await page.context().browser().newContext();
   page = await context.newPage();
   try {
-  const fixture = 'C:/Users/Mert/AppData/Local/Temp/kilo/phase3-browser.mp4';
+  const env = name => { const value = globalThis.process?.env?.[name]; if (!value) throw new Error(`Set ${name} (see web/README.md) before running this acceptance script`); return value.replace(/[\/]+$/, ''); };
+  const fixture = env('AFC_VIDEO_FIXTURE');
   const assert = (value, message) => { if (!value) throw new Error(message); };
   await page.goto('http://localhost:3000');
   const requests = [];

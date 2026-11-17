@@ -15,7 +15,7 @@ npm start       # dist'i http://localhost:3000 üzerinde sunar
 
 - `npm test` içindeki test listesi elle yazılıdır: yeni `*.test.ts` dosyasını `package.json`'a da ekle.
 - `tsconfig.json` testleri tip denetiminden hariç tutar; build testleri kontrol etmez.
-- `web/tests/*-acceptance.js` ve `footprints-fixtures.mjs` `npm test` ile çalışmaz ve şu an Windows'a özgü sabit yollar içerir.
+- `web/tests/*-acceptance.js` ve `footprints-fixtures.mjs` `npm test` ile çalışmaz; yollar ortam değişkenleriyle verilir (`AFC_FIXTURES_DIR`, `AFC_VIDEO_FIXTURE`, `AFC_SCREENSHOT_DIR`, `AFC_FIXTURE_CACHE_PARENT`, `AFC_PYTHON`; ayrıntı `web/README.md`).
 - CI: `.github/workflows/web-ci.yml` (Node 24, ffmpeg, `npm ci` / `npm test` / `npm run build`). CI yeşil olmadan birleştirme.
 
 ## Değişmez kurallar
@@ -31,7 +31,7 @@ npm start       # dist'i http://localhost:3000 üzerinde sunar
 - `inspect.worker.ts` / `video.worker.ts` — görsel ve video işleri; sözleşme `protocol.ts`.
 - `engine.ts` — JPEG/PNG/WebP kapsayıcıları, metadata politikası, çıktı doğrulama.
 - `footprints.ts` — AI beyanı / ipucu / provenance ayrımı ve işlem planı.
-- `c2pa.ts`, `cbor.ts`, `c2pa-structure.ts` — C2PA okuma (içerik şu an yalnız JPEG) ve yapı doğrulama; `xmp.ts` — XMP alt kümesi.
+- `c2pa.ts`, `cbor.ts`, `c2pa-structure.ts` — C2PA okuma (JPEG APP11, PNG `caBX`, WebP `C2PA`) ve yapı doğrulama; `xmp.ts` — XMP alt kümesi.
 - `video.ts` — MP4/MOV aynı uzunlukta dönüşüm.
 
 ## Kurallar

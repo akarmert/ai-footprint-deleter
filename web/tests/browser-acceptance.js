@@ -4,8 +4,9 @@ async (page) => {
   const context = await page.context().browser().newContext();
   page = await context.newPage();
   try {
-  // Adjust this local fixture path when running in a different checkout.
-  const root = 'C:/_projectsmert/ai-footprint-deleter/web/tests/fixtures';
+  // AFC_FIXTURES_DIR: absolute path of web/tests/fixtures in this checkout.
+  const env = name => { const value = globalThis.process?.env?.[name]; if (!value) throw new Error(`Set ${name} (see web/README.md) before running this acceptance script`); return value.replace(/[\/]+$/, ''); };
+  const root = env('AFC_FIXTURES_DIR');
   const assert = (condition, message) => { if (!condition) throw new Error(message); };
   const openAdvanced = async () => { const tools = page.locator('#advanced-tools'); if (!await tools.evaluate(element => element.open)) await tools.locator(':scope > summary').click(); };
   await page.goto('http://localhost:3000');

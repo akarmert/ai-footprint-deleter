@@ -6,10 +6,13 @@ import { readFile, writeFile, mkdir, readdir, mkdtemp } from 'node:fs/promises'
 import { resolve, join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
+import { tmpdir } from 'node:os'
 import assert from 'node:assert/strict' // Self-test only; no engine or fixture access.
 
 const web = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-const parent = 'C:\\Users\\Mert\\AppData\\Local\\Temp\\kilo'
+// Cache parent: AFC_FIXTURE_CACHE_PARENT or <os temp>/ai-footprint-deleter-fixtures. Python: AFC_PYTHON or the repo .venv.
+const parent = resolve(process.env.AFC_FIXTURE_CACHE_PARENT || join(tmpdir(), 'ai-footprint-deleter-fixtures'))
+const python = process.env.AFC_PYTHON || resolve(web, '..', '.venv', ...(process.platform === 'win32' ? ['Scripts', 'python.exe'] : ['bin', 'python']))
 const publicCommit = '22beccc075707475b038d8789d0136c009e43143'
 const sdkCommit = '0e92435c6d621c02c9bde2a8d82346295ed1f509'
 const names = ['adobe-20220124-A.jpg', 'adobe-20220124-C.jpg', 'adobe-20220124-CA.jpg', 'adobe-20220124-E-dat-CA.jpg', 'adobe-20220124-E-sig-CA.jpg', 'adobe-20220124-E-uri-CA.jpg', 'adobe-20220124-E-clm-CAICAI.jpg', 'truepic-20230212-camera.jpg', 'exp-test1.png', 'sample1.png', 'sample1.webp']
@@ -114,6 +117,7 @@ function selfTest() {
 async function main(args) {
 const { scanImage, cleanFootprints } = await import('../src/engine.ts')
 if (!(args.length === 1 && args[0] === '--download') && !(args.length === 2 && args[0] === '--cache')) throw new Error('Use --download or --cache <directory>')
+if (args[0] === '--download') await mkdir(parent, { recursive: true })
 const cache = args[0] === '--download' ? await mkdtemp(join(parent, `ai-footprint-deleter-${new Date().toISOString().replace(/[:.]/g, '-')}-${randomUUID().slice(0, 8)}-`)) : resolve(args[1])
 if (dirname(cache) !== parent || !cache.split(/[\\/]/).at(-1).startsWith('ai-footprint-deleter-')) throw new Error('Cache must be a task directory directly under approved temp parent')
 await mkdir(join(cache, 'outputs'), { recursive: true })
@@ -155,7 +159,7 @@ for (const fixture of fixtures) {
   results.push(row)
 }
 const sdkPaths = results.filter(r => r.input).flatMap(r => [join(cache, r.name), ...(r.output ? [join(cache, 'outputs', r.name)] : [])])
-const sdk = spawnSync(resolve(web, '..', '.venv', 'Scripts', 'python.exe'), [join(web, 'tests', 'c2pa-sdk-check.py'), ...sdkPaths], { encoding: 'utf8', timeout: 120000, env: { ...process.env, PYTHONDONTWRITEBYTECODE: '1' } })
+const sdk = spawnSync(python, [join(web, 'tests', 'c2pa-sdk-check.py'), ...sdkPaths], { encoding: 'utf8', timeout: 120000, env: { ...process.env, PYTHONDONTWRITEBYTECODE: '1' } })
 const afterSources = await sources()
 let sdkReport, sdkError = sdk.error?.message
 try { sdkReport = JSON.parse(sdk.stdout) } catch { sdkError ??= 'Missing or invalid SDK JSON output' }

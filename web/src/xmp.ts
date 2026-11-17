@@ -1,4 +1,5 @@
 // Deliberately bounded XML/XMP subset, not a general XML or RDF parser.
+import { isAiDigitalSourceType } from './ai-source-types.ts'
 export interface XmpReference { value: string; start: number; end: number }
 export interface XmpAnalysis {
   status: 'valid' | 'malformed' | 'unsupported'
@@ -281,7 +282,6 @@ export function analyzeXmp(bytes: Uint8Array): XmpAnalysis {
     // Match expanded property names, never prefixes, vendor names or arbitrary XML text.
     const aiSources: string[] = []
     const sourceProperty = expanded('http://iptc.org/std/Iptc4xmpExt/2008-02-29/', 'DigitalSourceType')
-    const aiType = 'http://cv.iptc.org/newscodes/digitalsourcetype/trainedAlgorithmicMedia'
     const sourceValues: string[] = []
     const sourceAttrs = new Set<Attribute>(), sourceNodes = new Set<Element>()
     for (const description of descriptions) {
@@ -303,7 +303,7 @@ export function analyzeXmp(bytes: Uint8Array): XmpAnalysis {
     }
     inspectSources(root)
     if (sourceValues.length > 1 || sourceValues.some(value => !/^https?:\/\/\S+$/.test(value))) unsupported('Ambiguous DigitalSourceType')
-    if (sourceValues[0] === aiType) aiSources.push(aiType)
+    if (isAiDigitalSourceType(sourceValues[0])) aiSources.push(sourceValues[0]!)
     return { status: 'valid', references, projection: JSON.stringify(project(root)), aiSources, hints: [...hints] }
   } catch (error) {
     if (error instanceof Rejection) return { status: error.status, references: [], projection: '', reason: error.message }
