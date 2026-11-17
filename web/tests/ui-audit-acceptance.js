@@ -4,6 +4,8 @@ async page => {
   page = await context.newPage();
   try {
   const assert = (condition, message) => { if (!condition) throw new Error(message); };
+  // Optional AFC_SCREENSHOT_DIR: where to save the after-audit screenshots (skipped when unset).
+  const screenshotDir = globalThis.process?.env?.AFC_SCREENSHOT_DIR?.replace(/[\/]+$/, '');
   // The browser tool provides Playwright Library, not Playwright Test's expect.
   const toBeVisible = async locator => { await locator.waitFor({ state: 'visible' }); assert(await locator.isVisible(), `Not visible: ${locator}`); };
   await page.emulateMedia({ reducedMotion: 'reduce' });
@@ -77,9 +79,9 @@ async page => {
   assert(await page.getByRole('button', { name: "Metadata'yı Temizle", exact: true }).evaluate(element => element === document.activeElement), 'Consent did not restore focus');
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto('http://localhost:3000');
-  await page.screenshot({ path: 'C:/Users/Mert/AppData/Local/Temp/kilo-playwright/ui-audit-after-desktop.png', fullPage: true });
+  if (screenshotDir) await page.screenshot({ path: `${screenshotDir}/ui-audit-after-desktop.png`, fullPage: true });
   await page.setViewportSize({ width: 390, height: 900 });
-  await page.screenshot({ path: 'C:/Users/Mert/AppData/Local/Temp/kilo-playwright/ui-audit-after-mobile.png', fullPage: true });
+  if (screenshotDir) await page.screenshot({ path: `${screenshotDir}/ui-audit-after-mobile.png`, fullPage: true });
   return { viewports, menuEscape: 'passed', skipFocus: 'passed', footerLandmark: 'passed', technicalLimits: 'passed', faq: 'passed', visibility: 'Playwright waitFor visible + isVisible; expect package not installed', screenshots: 'before/after captured; repeated unmasked frames equal' };
   } finally {
     await context.close();

@@ -1,5 +1,7 @@
 // Run with Playwright browser_run_code against the production build on localhost:3000.
 async page => {
+  // AFC_FIXTURES_DIR: absolute path of web/tests/fixtures in this checkout.
+  const env = name => { const value = globalThis.process?.env?.[name]; if (!value) throw new Error(`Set ${name} (see web/README.md) before running this acceptance script`); return value.replace(/[\/]+$/, ''); };
   const assert = (value, message) => { if (!value) throw new Error(message); };
   await page.emulateMedia({ reducedMotion: 'no-preference' });
   await page.goto('http://localhost:3000');
@@ -55,7 +57,7 @@ async page => {
     window.actualWorker = Worker;
     window.Worker = class { postMessage() {} terminate() {} };
   });
-  await page.locator('#media').setInputFiles('C:/_projectsmert/ai-footprint-deleter/web/tests/fixtures/image-1.png');
+  await page.locator('#media').setInputFiles(`${env('AFC_FIXTURES_DIR')}/image-1.png`);
   await page.getByText('Metadata taranıyor…', { exact: true }).waitFor();
   await stopped('file analysis');
   await page.getByRole('button', { name: 'İptal et', exact: true }).click();
