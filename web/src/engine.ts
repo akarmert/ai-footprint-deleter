@@ -3,6 +3,7 @@ import { analyzeXmp, removeXmpReference } from './xmp.ts'
 import { buildFootprints, classifyFootprintText, consentFootprintPlan, type FootprintRecordAnalysis, type FootprintReport, type FootprintPlan, type FootprintResult } from './footprints.ts'
 import { readC2pa } from './c2pa.ts'
 import type { C2paReport } from './c2pa-types.ts'
+import { AI_DIGITAL_SOURCE_TYPE_URI_PATTERN } from './ai-source-types.ts'
 
 export type C2paDecisionCode = 'SUPPORTED_EMBEDDED' | 'SUPPORTED_WITH_LOCAL_XMP_REFERENCE' | 'BLOCKED_EXTERNAL_REFERENCE' | 'BLOCKED_AMBIGUOUS_PROVENANCE' | 'BLOCKED_UNSUPPORTED_STRUCTURE' | 'BLOCKED_MALFORMED_METADATA' | 'NO_EMBEDDED_MANIFEST'
 export type C2paDecision = { code: C2paDecisionCode; reason: string }
@@ -14,7 +15,8 @@ export type CleaningMode = 'safe' | 'comprehensive'
 export type MetadataRecord = { id: string; kind: string; bytes: number; preview: string; status: 'cleanable' | 'protected' | 'unsupported'; reason: string; requiresRightsConsent: boolean; comprehensiveOnly?: boolean; footprintAnalysis?: FootprintRecordAnalysis }
 export type Scan = { format: 'JPEG' | 'PNG' | 'WebP'; width: number; height: number; alpha: boolean; orientation: number | null; records: MetadataRecord[]; c2pa: string; cleaningBlocked: boolean; c2paRemovable?: boolean; c2paDecision?: C2paDecision; notes: string[]; footprints?: FootprintReport; footprintPlan?: FootprintPlan; provenance?: C2paReport }
 type Part = { start: number; end: number; payload: Uint8Array; kind: string; record?: MetadataRecord; image: boolean }
-type Parsed = { scan: Scan; parts: Part[]; header: number; storeParts: Part[]; otherBlocked: boolean; xmpPatch?: XmpPatch }
+type MpfIndex = { part: Part; little: boolean; entryOffset: number; count: number }
+type Parsed = { scan: Scan; parts: Part[]; header: number; storeParts: Part[]; otherBlocked: boolean; xmpPatch?: XmpPatch; mpf?: MpfIndex }
 const MAX = 128 * 1024 * 1024
 const MAX_PARTS = 4096
 const MAX_METADATA = 16 * 1024 * 1024
@@ -113,6 +115,86 @@ export function isRemovable(record: MetadataRecord, mode: CleaningMode = 'safe')
   return record.comprehensiveOnly ? mode === 'comprehensive' : record.status === 'cleanable' || record.status === 'protected' && record.requiresRightsConsent
 }
 function validateMode(mode: CleaningMode): void { if (mode !== 'safe' && mode !== 'comprehensive') fail('Geçersiz temizleme modu') }
+// JPEG Multi-Picture Format (CIPA DC-007) index in the primary image's APP2 'MPF\0' segment.
+// Offsets are relative to the MP header (TIFF byte-order mark right after 'MPF\0').
+function readMpfIndex(payload: Uint8Array): { little: boolean; entryOffset: number; entries: { attribute: number; size: number; offset: number }[] } {
+  const t = payload.subarray(4)
+  const bounds = (p: number, n: number) => { if (!Number.isSafeInteger(p) || p < 0 || p + n > t.length) fail('MPF sınırı') }
+  bounds(0, 8)
+  const order = ascii(t, 0, 2)
+  if (order !== 'II' && order !== 'MM') fail('MPF bayt sırası')
+  const little = order === 'II'
+  const r16 = (p: number) => { bounds(p, 2); return u16(t, p, little) }
+  const r32 = (p: number) => { bounds(p, 4); return u32(t, p, little) }
+  if (r16(2) !== 42) fail('MPF TIFF başlığı')
+  const ifd = r32(4), n = r16(ifd)
+  if (ifd < 8 || !n || n > 16) fail('MPF IFD')
+  bounds(ifd + 2, n * 12 + 4)
+  let version = false, count = 0, entryOffset = -1, entryBytes = 0
+  for (let i = 0; i < n; i++) {
+    const e = ifd + 2 + i * 12, tag = r16(e), type = r16(e + 2), items = r32(e + 4)
+    if (tag === 0xb000) { if (type !== 7 || items !== 4 || ascii(t, e + 8, e + 12) !== '0100') fail('MPF sürümü'); version = true }
+    else if (tag === 0xb001) { if (type !== 4 || items !== 1) fail('MPF görüntü sayısı'); count = r32(e + 8) }
+    else if (tag === 0xb002) { if (type !== 7) fail('MPF giriş türü'); entryBytes = items; entryOffset = r32(e + 8) }
+    else if (tag !== 0xb003 && tag !== 0xb004) fail('Bilinmeyen MPF etiketi')
+  }
+  if (!version || count < 2 || count > 16 || entryBytes !== count * 16 || entryOffset < 8) fail('MPF dizini')
+  bounds(entryOffset, entryBytes)
+  const entries = Array.from({ length: count }, (_, i) => ({ attribute: r32(entryOffset + i * 16), size: r32(entryOffset + i * 16 + 4), offset: r32(entryOffset + i * 16 + 8) }))
+  return { little, entryOffset, entries }
+}
+// Bounded marker walk of a secondary MPF image up to its first scan; reports provenance and AI hints in its APP/COM segments.
+function inspectSecondaryJpeg(image: Uint8Array): { provenance: boolean; metadata: boolean; explicit: string[]; hints: string[] } {
+  if (image.length < 4 || image[0] !== 255 || image[1] !== 216) fail('MPF ikincil görüntü SOI')
+  const explicitPattern = new RegExp(AI_DIGITAL_SOURCE_TYPE_URI_PATTERN, 'g')
+  let pos = 2, provenance = false, metadata = false, segments = 0
+  const explicit = new Set<string>(), hints = new Set<string>()
+  while (pos < image.length) {
+    if (++segments > MAX_PARTS || image[pos] !== 255) fail('MPF ikincil görüntü marker')
+    while (pos < image.length && image[pos] === 255) pos++
+    if (pos >= image.length) fail('MPF ikincil görüntü marker')
+    const marker = image[pos++]!
+    if (marker === 218 || marker === 217) break
+    if (marker === 0 || marker === 1 || marker === 216 || (marker >= 208 && marker <= 215)) fail('MPF ikincil görüntü marker sırası')
+    if (pos + 2 > image.length) fail('MPF ikincil görüntü segmenti')
+    const n = u16(image, pos)
+    if (n < 2 || pos + n > image.length) fail('MPF ikincil görüntü segmenti')
+    const payload = image.subarray(pos + 2, pos + n); pos += n
+    if (marker === 235) provenance = true
+    // EXIF/XMP (APP1), IPTC (APP13) and comments are user metadata; MPF/ICC (APP2), JFIF (APP0) and Adobe (APP14) are not.
+    if (marker === 225 || marker === 237 || marker === 254 || marker === 235) metadata = true
+    else if ((marker >= 227 && marker <= 239 && marker !== 238)) metadata = true
+    if ((marker >= 225 && marker <= 239) || marker === 254) {
+      const value = text(payload)
+      if (/c2pa|jumbf|contentcredentials|content.credentials|manifest.store/i.test(value)) provenance = true
+      for (const match of value.match(explicitPattern) ?? []) explicit.add(match)
+      for (const hint of classifyFootprintText(value, false).hints) hints.add(hint)
+    }
+  }
+  return { provenance, metadata, explicit: [...explicit], hints: [...hints] }
+}
+// Recomputes the primary MPF entry fields for a new block layout: primary size and secondary
+// offsets are the only bytes that change. Without an MPF index the blocks are returned as-is.
+function layoutWithMpf(parsed: Parsed, items: { part: Part; bytes: Uint8Array }[]): Uint8Array[] {
+  const blocks = items.map(item => item.bytes)
+  const mpf = parsed.mpf
+  if (!mpf) return blocks
+  const prefix = mpf.part.end - mpf.part.start - mpf.part.payload.length
+  let pos = parsed.header, base = -1, mpfAt = -1, primaryEnd = -1
+  const secondaries: number[] = []
+  items.forEach((item, i) => {
+    if (item.part === mpf.part) { mpfAt = i; base = pos + prefix + 4 }
+    if (item.part.kind === 'MPF-image') { if (primaryEnd < 0) primaryEnd = pos; secondaries.push(pos) }
+    pos += item.bytes.length
+  })
+  if (mpfAt < 0 || primaryEnd < 0 || secondaries.length !== mpf.count - 1 || blocks[mpfAt]!.length !== mpf.part.end - mpf.part.start) fail('MPF düzeni')
+  const block = blocks[mpfAt]!.slice(), view = new DataView(block.buffer)
+  const entries = prefix + 4 + mpf.entryOffset
+  view.setUint32(entries + 4, primaryEnd, mpf.little)
+  secondaries.forEach((start, i) => view.setUint32(entries + (i + 1) * 16 + 8, start - base, mpf.little))
+  blocks[mpfAt] = block
+  return blocks
+}
 function parse(data: Uint8Array): Parsed {
   if (!(data instanceof Uint8Array) || data.length < 12 || data.length > MAX || (typeof SharedArrayBuffer !== 'undefined' && data.buffer instanceof SharedArrayBuffer)) fail('Geçersiz veri veya 128 MiB sınırı')
   const scan: Scan = { format: 'PNG', width: 0, height: 0, alpha: false, orientation: 1, records: [], c2pa: 'not-detected-not-guaranteed', cleaningBlocked: false, notes: ['Yalnız kapsayıcı doğrulanır; kodlanmış pikseller çözülmez.', 'C2PA imzası doğrulanmaz; algılanmaması yokluk garantisi değildir.'] }
@@ -122,6 +204,7 @@ function parse(data: Uint8Array): Parsed {
   const storeParts: Part[] = []
   const xmpPackets: XmpPacket[] = []
   let xmpFailure: C2paDecision | undefined
+  let mpfIndex: MpfIndex | undefined
   const add = (start: number, end: number, p: number, length: number, kind: string, image = false): Part => {
     if (parts.length >= MAX_PARTS) fail('Chunk/segment sayısı sınırı')
     if (length > 64 * 1024 * 1024) fail('Tek chunk 64 MiB sınırı')
@@ -307,6 +390,7 @@ function parse(data: Uint8Array): Parsed {
     scan.format = 'JPEG'; header = 2
     let pos = 2, frame = false, scanned = false, ended = false
     let components: number[] = []
+    let mpfPart: Part | undefined
     while (pos < data.length) {
       const start = pos
       if (data[pos] !== 255) fail('JPEG marker')
@@ -314,8 +398,37 @@ function parse(data: Uint8Array): Parsed {
       if (pos >= data.length) fail('Eksik JPEG marker')
       const marker = data[pos++]!
       if (marker === 217) {
-        if (!frame || !scanned || pos !== data.length) fail('JPEG EOI/ek veri')
-        add(start, pos, start, pos - start, 'EOI', true); ended = true; break
+        if (!frame || !scanned) fail('JPEG EOI/ek veri')
+        add(start, pos, start, pos - start, 'EOI', true); ended = true
+        if (pos !== data.length) {
+          // Data after EOI is accepted only as MPF secondary images that the index describes exactly.
+          const mp: Part = mpfPart ?? fail('JPEG EOI/ek veri')
+          const index = readMpfIndex(mp.payload)
+          const base = mp.payload.byteOffset - data.byteOffset + 4
+          if (index.entries[0]!.offset !== 0 || index.entries[0]!.size !== pos) fail('MPF birincil görüntü girişi')
+          let expected = pos
+          const explicit = new Set<string>(), hints = new Set<string>()
+          let secondaryMetadata = false
+          for (const entry of index.entries.slice(1)) {
+            const at = base + entry.offset
+            if (at !== expected || entry.size < 4 || at + entry.size > data.length) fail('MPF ikincil görüntü konumu')
+            const secondary = add(at, at + entry.size, at, entry.size, 'MPF-image', true)
+            const found = inspectSecondaryJpeg(secondary.payload)
+            found.explicit.forEach(v => explicit.add(v)); found.hints.forEach(v => hints.add(v))
+            secondaryMetadata ||= found.metadata
+            if (found.provenance) provenance(secondary)
+            expected = at + entry.size
+          }
+          if (expected !== data.length) fail('MPF dosya sonu')
+          mpfIndex = { part: mp, little: index.little, entryOffset: index.entryOffset, count: index.entries.length }
+          mp.record!.footprintAnalysis = { complete: !secondaryMetadata, explicit: [...explicit], hints: [...hints], dedicated: false }
+          scan.notes.push('Çoklu görüntü (MPF) dosyası: ikincil görüntüler (ör. HDR kazanç haritası) bayt bayt korunur; metadata’ları kaldırılmaz, yalnız kaynak/AI ipuçları için taranır.')
+          if (secondaryMetadata) {
+            mp.record!.reason = 'Çoklu görüntü dizini (MPF) korunur; ikincil görüntülerde EXIF/XMP gibi metadata var ve kaldırılmaz'
+            scan.notes.push('İkincil görüntülerde EXIF/XMP gibi metadata bulundu; bu araç onları kaldırmaz. Çıktıda bu bilgiler kalır.')
+          }
+        }
+        break
       }
       if (marker === 0 || marker === 216 || marker === 1 || (marker >= 208 && marker <= 215)) fail('JPEG marker sırası')
       if (pos + 2 > data.length) fail('JPEG segment uzunluğu')
@@ -353,7 +466,16 @@ function parse(data: Uint8Array): Parsed {
         if (ascii(p, 0, Math.min(6, p.length)) === 'Exif\0\0') metadata(part, 'EXIF')
         else if (text(p.subarray(0, 64)).startsWith('http://ns.adobe.com/xap/1.0/\0')) metadata(part, 'XMP')
         else { otherBlocked = true; scan.cleaningBlocked = true; record(part, 'APP1', 'protected', 'Bilinmeyen veya genişletilmiş APP1/provenans; tüm temizlik engellendi') }
-      } else if (marker === 226) { part.image = false; if (ascii(p, 0, Math.min(11, p.length)) === 'ICC_PROFILE') metadata(part, 'ICC'); else record(part, 'APP2', 'protected', 'Bilinmeyen APP2 korunur') }
+      } else if (marker === 226) {
+        part.image = false
+        if (ascii(p, 0, Math.min(11, p.length)) === 'ICC_PROFILE') metadata(part, 'ICC')
+        else if (ascii(p, 0, Math.min(4, p.length)) === 'MPF\0') {
+          if (mpfPart || scanned) fail('Birden çok veya geç MPF segmenti')
+          mpfPart = part
+          record(part, 'MPF', 'protected', 'Çoklu görüntü dizini (MPF) korunur; kaldırmalarda yalnız boyut/konum alanları güncellenir')
+          part.record!.footprintAnalysis = { complete: true, explicit: [], hints: [], dedicated: false }
+        } else record(part, 'APP2', 'protected', 'Bilinmeyen APP2 korunur')
+      }
       else if (marker === 235) { part.image = false; metadata(part, 'APP11') }
       else if (marker === 237 || marker === 254) { part.image = false; metadata(part, marker === 237 ? 'IPTC' : 'Comment') }
       else if (marker === 224 && ascii(p, 0, 5) === 'JFIF\0') {
@@ -367,6 +489,17 @@ function parse(data: Uint8Array): Parsed {
       pos = finish
     }
     if (!ended) fail('JPEG EOI yok')
+    if (mpfPart && !mpfIndex) {
+      // An MPF index without the secondary images it must describe is inconsistent: keep everything.
+      otherBlocked = true; scan.cleaningBlocked = true
+      mpfPart.record!.reason = 'MPF dizini dosyadaki görüntülerle eşleşmiyor; tüm temizlik engellendi'
+    }
+    if (mpfIndex) {
+      // Ultra HDR/gain-map descriptors in the primary XMP are kept with the MPF images they describe.
+      for (const part of parts) if (part.record?.kind === 'XMP' && /hdrgm|GContainer|Container:Directory/i.test(text(part.payload))) {
+        part.record.status = 'protected'; part.record.requiresRightsConsent = false; part.record.reason = 'Ultra HDR / çoklu görüntü dizini XMP korunur'
+      }
+    }
   } else if (ascii(data, 0, 4) === 'RIFF' && ascii(data, 8, 12) === 'WEBP') {
     scan.format = 'WebP'; header = 12
     if (u32(data, 4, true) + 8 !== data.length) fail('WebP RIFF boyutu')
@@ -456,7 +589,6 @@ function parse(data: Uint8Array): Parsed {
     try {
       let store: Uint8Array
       if (scan.format === 'JPEG') {
-        if (parts.some(p => p.kind === 'JPEG-e2' && ascii(p.payload, 0, 4) === 'MPF\0')) fail('MPF is unsupported')
         const first = parts.indexOf(storeParts[0]!), sos = parts.findIndex(p => p.kind === 'JPEG-da')
         if (storeParts.length > 128 || first < 0 || sos < 0 || storeParts.some((p, i) => parts[first + i] !== p || parts.indexOf(p) >= sos)) fail('APP11 position/group')
         let length = 8
@@ -498,7 +630,7 @@ function parse(data: Uint8Array): Parsed {
       scan.notes.push('C2PA kaldırma kapsamı yalnız üst düzey manifest store’dur; korunan EXIF, küçük resim ve iç içe metadata kaldırılmış sayılmaz.')
     } catch { /* Unsupported or ambiguous stores remain fail-closed. */ }
   }
-  return { scan, parts, header: header!, storeParts, otherBlocked, ...(xmpPatch ? { xmpPatch } : {}) }
+  return { scan, parts, header: header!, storeParts, otherBlocked, ...(xmpPatch ? { xmpPatch } : {}), ...(mpfIndex ? { mpf: mpfIndex } : {}) }
 }
 export function scanImage(data: Uint8Array): Scan {
   const scan = parse(data).scan
@@ -565,8 +697,9 @@ export async function cleanImage(data: Uint8Array, ids: string[], rightsConsent:
   output.set(data.subarray(0, before.header))
   let pos = before.header
   const removedKinds = new Set(before.parts.filter(p => p.record && selected.has(p.record.id)).map(p => p.kind))
-  for (const part of retained) {
-    output.set(data.subarray(part.start, part.end), pos)
+  const blocks = layoutWithMpf(before, retained.map(part => ({ part, bytes: data.subarray(part.start, part.end) })))
+  for (const [i, part] of retained.entries()) {
+    output.set(blocks[i]!, pos)
     if (before.scan.format === 'WebP' && part.kind === 'VP8X') {
       if (removedKinds.has('ICCP')) output[pos + 8]! &= ~32
       if (removedKinds.has('EXIF')) output[pos + 8]! &= ~8
@@ -585,7 +718,7 @@ export async function cleanC2pa(data: Uint8Array, consent: boolean): Promise<Cle
   if (!before.scan.c2paRemovable || before.otherBlocked) fail('C2PA store yapısı veya diğer provenance engelleri kaldırmaya uygun değil')
   const retained = before.parts.filter(p => !before.storeParts.includes(p))
   const patched = before.xmpPatch ? patchedXmpBlock(source, before.scan.format, before.xmpPatch) : undefined
-  const expectedBlocks = retained.map(part => part === before.xmpPatch?.part ? patched! : source.subarray(part.start, part.end))
+  const expectedBlocks = layoutWithMpf(before, retained.map(part => ({ part, bytes: part === before.xmpPatch?.part ? patched! : source.subarray(part.start, part.end) })))
   const output = new Uint8Array(before.header + expectedBlocks.reduce((n, block) => n + block.length, 0))
   output.set(source.subarray(0, before.header))
   let pos = before.header
@@ -652,12 +785,13 @@ export async function verifyOutput(data: Uint8Array, output: Uint8Array, ids: st
   const retained = before.parts.filter(p => !p.record || !selected.has(p.record.id))
   const removedKinds = new Set(before.parts.filter(p => p.record && selected.has(p.record.id)).map(p => p.kind))
   const after = parse(output)
+  const expectedBlocks = layoutWithMpf(before, retained.map(part => ({ part, bytes: data.subarray(part.start, part.end) })))
   if (before.header !== after.header) fail('Görüntü başlığı değişti')
   for (let i = 0; i < before.header; i++) if (!(before.scan.format === 'WebP' && i >= 4 && i < 8) && data[i] !== output[i]) fail('Görüntü başlık baytları değişti')
   if (retained.length !== after.parts.length) fail('Kaldırma sayısı doğrulanamadı')
   retained.forEach((part, i) => {
     const actual = after.parts[i]!
-    const expected = data.subarray(part.start, part.end), raw = output.subarray(actual.start, actual.end)
+    const expected = expectedBlocks[i]!, raw = output.subarray(actual.start, actual.end)
     if (expected.length !== raw.length || part.kind !== actual.kind) fail('Tutulan blok sırası değişti')
     for (let j = 0; j < raw.length; j++) {
       let value = expected[j]!
