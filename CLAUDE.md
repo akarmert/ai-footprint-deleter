@@ -31,6 +31,7 @@ npm start       # dist'i http://localhost:3000 üzerinde sunar
 - `inspect.worker.ts` / `video.worker.ts` — görsel ve video işleri; sözleşme `protocol.ts`.
 - `engine.ts` — JPEG/PNG/WebP kapsayıcıları, metadata politikası, çıktı doğrulama.
 - `footprints.ts` — AI beyanı / ipucu / provenance ayrımı ve işlem planı.
+- `ai-generator.ts` — yalnız bilgilendirme: dosyada adı geçen AI aracını bulur (C2PA işlem `softwareAgent` > Claim Generator > metadata metni). Silme planını etkilemez.
 - `c2pa.ts`, `cbor.ts`, `c2pa-structure.ts` — C2PA okuma (JPEG APP11, PNG `caBX`, WebP `C2PA`) ve yapı doğrulama; `xmp.ts` — XMP alt kümesi.
 - `video.ts` — MP4/MOV aynı uzunlukta dönüşüm.
 
