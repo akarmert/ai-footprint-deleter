@@ -30,7 +30,8 @@ npm start       # dist'i http://localhost:3000 üzerinde sunar
 
 ## Kod haritası (`web/src`)
 
-- `main.tsx` — tek `App`: dosya seçimi, onaylar, Worker yaşam döngüsü, indirme.
+- `main.tsx` — `App`: dosya seçimi, onaylar, Worker yaşam döngüsü ve durum kilitleri.
+- `app-state.ts` — saf UI türetmeleri (temizlenebilir kayıtlar, onay gereksinimi, tek tık eylemleri, çıktı dosya adları); `hooks/useResultScroll.ts` — sonuca otomatik kaydırma; `components/AdvancedTools.tsx` — Gelişmiş Araçlar bölümleri.
 - `inspect.worker.ts` / `video.worker.ts` — görsel ve video işleri; sözleşme `protocol.ts`.
 - `engine.ts` — JPEG/PNG/WebP kapsayıcıları, metadata politikası, çıktı doğrulama.
 - `footprints.ts` — AI beyanı / ipucu / provenance ayrımı ve işlem planı.

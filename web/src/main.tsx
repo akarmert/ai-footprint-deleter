@@ -1,7 +1,16 @@
 import { StrictMode, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { validateSelection } from './media';
-import { isRemovable, type CleaningMode } from './engine';
+import type { CleaningMode } from './engine';
+import { deriveActions, downloadName, isVideoFormat, videoOutputName } from './app-state';
+import { useResultScroll } from './hooks/useResultScroll';
+import {
+  C2paScopeNote,
+  CleaningEligibilityNote,
+  CleaningPolicyDetails,
+  FootprintOperationDetails,
+  VideoDiskOptions,
+} from './components/AdvancedTools';
 import type { MediaScan, Response, VerifiedOutput, VideoResponse } from './protocol';
 import { chooseOutput, chooseTemporaryDirectory, supportsDiskOutput } from './output';
 import { MetadataResults } from './MetadataResults';
@@ -18,8 +27,6 @@ import {
   VerificationResult,
   FootprintSummary,
   FootprintDetails,
-  footprintStatuses,
-  footprintReason,
 } from './components/Workspace';
 import './style.css';
 
@@ -92,55 +99,11 @@ function App() {
   const committingRef = useRef(false);
   const generation = useRef(0);
   const resultTarget = useRef<HTMLElement>(null);
-  const pendingResultScroll = useRef<{ version: number; interrupted: boolean } | undefined>(undefined);
-  useEffect(() => {
-    const interrupt = () => {
-      if (pendingResultScroll.current) pendingResultScroll.current.interrupted = true;
-    };
-    const keyScroll = (event: KeyboardEvent) => {
-      if (
-        ['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].includes(event.key) &&
-        !(event.target instanceof HTMLInputElement)
-      )
-        interrupt();
-    };
-    window.addEventListener('scroll', interrupt, { passive: true });
-    window.addEventListener('wheel', interrupt, { passive: true });
-    window.addEventListener('touchmove', interrupt, { passive: true });
-    window.addEventListener('keydown', keyScroll);
-    return () => {
-      window.removeEventListener('scroll', interrupt);
-      window.removeEventListener('wheel', interrupt);
-      window.removeEventListener('touchmove', interrupt);
-      window.removeEventListener('keydown', keyScroll);
-    };
-  }, []);
-  useEffect(() => {
-    if (busy || (!scan && !error)) return;
-    const pending = pendingResultScroll.current;
-    if (!pending) return;
-    const frame = requestAnimationFrame(() => {
-      if (pendingResultScroll.current !== pending || pending.version !== generation.current) return;
-      pendingResultScroll.current = undefined;
-      const target = resultTarget.current;
-      if (pending.interrupted || !target) return;
-      const header = document.querySelector('.site-header');
-      const headerStyle = header && getComputedStyle(header);
-      const inset =
-        header && (headerStyle?.position === 'sticky' || headerStyle?.position === 'fixed')
-          ? Math.max(0, header.getBoundingClientRect().bottom) + 24
-          : 24;
-      target.style.scrollMarginTop = `${inset}px`;
-      const box = target.getBoundingClientRect();
-      const visibleHeight = Math.min(box.height, window.innerHeight - inset - 24);
-      if (box.top >= inset && box.top + visibleHeight <= window.innerHeight - 24) return;
-      target.scrollIntoView({
-        behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth',
-        block: 'start',
-      });
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [scan, busy, error]);
+  const pendingResultScroll = useResultScroll(resultTarget, generation, !busy && (!!scan || !!error), [
+    scan,
+    busy,
+    error,
+  ]);
   function stop() {
     if (worker.current) {
       if (videoWorker.current) worker.current.postMessage({ type: 'cancel' });
@@ -328,25 +291,11 @@ function App() {
       setError(cause instanceof Error ? cause.message : 'Dosya seçilemedi.');
     }
   }
-  const eligible = scan?.cleaningBlocked
-    ? []
-    : (scan?.records.filter(record =>
-        isRemovable(record, scan.format === 'MP4' || scan.format === 'MOV' ? 'safe' : mode),
-      ) ?? []);
-  const needsConsent = eligible.some(record => record.requiresRightsConsent || record.kind === 'ICC');
-  const c2paRemovable =
-    !!scan &&
-    (scan.format === 'JPEG' || scan.format === 'PNG' || scan.format === 'WebP') &&
-    scan.c2paRemovable === true;
-  const imageScan = scan && 'footprintPlan' in scan ? scan : undefined;
-  const footprintPlan = imageScan?.footprintPlan;
+  const { eligible, needsConsent, c2paRemovable, imageScan, footprintPlan, directRemovable } = deriveActions(
+    scan,
+    mode,
+  );
   const confirming = pendingConsent;
-  const directMetadataIds =
-    footprintPlan?.metadataIds.filter(
-      id => !imageScan?.records.find(record => record.id === id)?.requiresRightsConsent,
-    ) ?? [];
-  const directRemovable =
-    !!footprintPlan && !footprintPlan.blocked && (footprintPlan.removeC2pa || directMetadataIds.length > 0);
   function requestFootprints() {
     if (
       !directRemovable ||
@@ -414,15 +363,13 @@ function App() {
     setVideoDone(false);
     setError('');
     try {
-      if (scan.format === 'MP4' || scan.format === 'MOV') {
+      if (isVideoFormat(scan.format)) {
         if (!supportsDiskOutput())
           throw new Error(
             'Video çıktısı için HTTPS üzerinde güncel Chrome/Edge ve doğrudan disk yazımı gerekir. Blob indirme alternatifi yoktur.',
           );
         setSaving(true);
-        const handle = await chooseOutput(
-          `${(file?.name ?? 'video').replace(/\.[^.]*$/, '')}-removed.${scan.format.toLowerCase()}`,
-        );
+        const handle = await chooseOutput(videoOutputName(file?.name, scan.format));
         if (generation.current !== version || worker.current !== active) return;
         setBusy('clean');
         expire(active);
@@ -449,19 +396,7 @@ function App() {
     downloadURL.current = url;
     const link = document.createElement('a');
     link.href = url;
-    const base =
-      file.name
-        .replace(/\.[^.]*$/, '')
-        .replace(/[\\/:*?"<>|\x00-\x1f]/g, '_')
-        .slice(0, 120) || 'gorsel';
-    const originalExtension = file.name.match(/\.(jpe?g|png|webp)$/i)?.[1];
-    const extension =
-      output.footprintResult && originalExtension
-        ? originalExtension
-        : output.scan.format === 'JPEG'
-          ? 'jpg'
-          : output.scan.format.toLowerCase();
-    link.download = `${base}-removed.${extension}`;
+    link.download = downloadName(file.name, output);
     link.click();
   }
   const displayedScan = output?.scan ?? scan;
@@ -625,26 +560,7 @@ function App() {
                         )}
                       </>
                     )}
-                    {footprintResult && (
-                      <section aria-label="AI ayak izi işlem ayrıntıları">
-                        <h3>İşlem sonucu ve kalan kayıtlar</h3>
-                        <p>
-                          {footprintStatuses[footprintResult.status]} · {footprintReason(footprintResult)}
-                        </p>
-                        {(footprintResult.after ?? footprintResult.before).evidence.map((item, index) => (
-                          <article className="record" key={index}>
-                            <strong>
-                              {item.category === 'explicit-ai'
-                                ? 'AI beyanı · Doğrulanmamış'
-                                : item.category === 'metadata-hint'
-                                  ? 'Metadata ipucu'
-                                  : 'Kaynak geçmişi'}
-                            </strong>
-                            <pre>{item.source}</pre>
-                          </article>
-                        ))}
-                      </section>
-                    )}
+                    {footprintResult && <FootprintOperationDetails result={footprintResult} />}
                     {!output?.footprintResult && (
                       <VerificationResult
                         output={output}
@@ -662,29 +578,7 @@ function App() {
                           removable={displayedEligible.length}
                           preserved={preserved}
                         />
-                        {output ? (
-                          <p className="scan-note">
-                            Bu liste yeniden taranan çıktıda korunan kayıtları gösterir; temizleme seçenekleri kaynak
-                            dosyaya aittir.
-                          </p>
-                        ) : scan.cleaningBlocked ? (
-                          <p className="warning">
-                            Kaynak/imza kaydı mevcut, belirsiz veya yapı güvenle işlenemiyor: metadata temizliği
-                            engellendi. Yalnız desteklenen gömülü C2PA deposu için ayrı kaldırma düğmesi sunulur. İmza
-                            doğrulama yapılmaz.
-                          </p>
-                        ) : !eligible.length ? (
-                          <p className="warning">
-                            {scan.records.length
-                              ? 'Kaldırılabilecek metadata bulunamadı. Renk profili, görüntü yönü veya desteklenmeyen kayıtlar güvenlik için korunuyor.'
-                              : 'Desteklenen metadata kaydı bulunamadı; temizlenecek kayıt yok. Bu, tüm metadata’nın yokluğu garantisi değildir.'}
-                          </p>
-                        ) : (
-                          <p className="scan-note">
-                            Temizlenecek kayıtlar seçilen moda göre belirlenir. Hak/telif bilgisi için gerektiğinde onay
-                            istenir.
-                          </p>
-                        )}
+                        <CleaningEligibilityNote scan={scan} output={output} eligible={eligible} />
                       </>
                     )}
                     {scan && (
@@ -724,14 +618,7 @@ function App() {
                         </button>
                       )}
                     </div>
-                    {c2paRemovable && (
-                      <p className="scan-note" id="c2pa-scope-note">
-                        Yalnız C2PA’yı Kaldır: üst düzey gömülü C2PA deposu ve varsa yalnız ona bağlı tek yerel XMP
-                        işaretçisi kaldırılır. Bu depodaki üretici, telif, lisans ve Actions bilgileri çıktıda kaybolur;
-                        diğer metadata korunur. İmzalar doğrulanmaz; harici manifestler ve görünmez filigranlar
-                        etkilenmez.
-                      </p>
-                    )}
+                    {c2paRemovable && <C2paScopeNote />}
                     {scan && file && (
                       <MetadataResults
                         key={`${file.name}:${file.lastModified}:${file.size}:${output ? 'output' : 'source'}`}
@@ -748,68 +635,19 @@ function App() {
                       />
                     )}
                     {scan && (
-                      <details className="metadata">
-                        <summary>Temizleme politikası ve doğrulama ayrıntıları</summary>
-                        <div>
-                          {displayedScan?.records.map(record => (
-                            <article className="record" key={record.id}>
-                              <div className="record-heading">
-                                <strong>{record.kind}</strong>
-                                <span>
-                                  {displayedEligible.some(item => item.id === record.id)
-                                    ? record.requiresRightsConsent
-                                      ? 'Yetki onayıyla'
-                                      : 'Temizlenebilir'
-                                    : 'Korunur'}{' '}
-                                  · {record.bytes.toLocaleString('tr-TR')} bayt
-                                </span>
-                              </div>
-                              <p>{record.reason}</p>
-                              {record.preview && <pre>{record.preview}</pre>}
-                            </article>
-                          ))}
-                        </div>
-                        {output && (
-                          <details>
-                            <summary>Payload SHA-256</summary>
-                            <code>{output.payloadHash}</code>
-                          </details>
-                        )}
-                      </details>
+                      <CleaningPolicyDetails
+                        records={displayedScan?.records ?? []}
+                        eligible={displayedEligible}
+                        output={output}
+                      />
                     )}
-                    {(scan?.format === 'MP4' || scan?.format === 'MOV') && (
-                      <>
-                        <p className="warning">
-                          Video kaydı güncel masaüstü Chrome/Edge, HTTPS (veya localhost), File System Access ve yeterli
-                          geçici yerel alan gerektirir.{' '}
-                          {supportsDiskOutput()
-                            ? 'Dosya yeniden doğrulandıktan sonra ayrı hedefe kaydedilir.'
-                            : 'Bu tarayıcı doğrudan disk kaydını desteklemiyor; video çıktısı kaydedilemez. Blob indirme alternatifi yoktur.'}
-                        </p>
-                        <details className="output">
-                          <summary>Geçici video alanı ve disk sınırları</summary>
-                          <p>
-                            Varsayılan OPFS kotası işlem öncesinde tahmin edilir; tahmin gerçek boş alan garantisi
-                            değildir. Kota hatasında veya büyük videolarda ayrı bir yerel klasör seçebilirsiniz. Bu
-                            klasöre geçici medya yazılır ve işlem sonunda silinir; çökmede kalabilir. Kaynak ve hedef
-                            için ayrı dosyalar kullanın.
-                          </p>
-                          <button disabled={!!busy || saving || committing} onClick={selectTemporaryDirectory}>
-                            Geçici yerel klasör seç
-                          </button>
-                          {temporaryDirectory && (
-                            <>
-                              <p>Seçilen klasör: {temporaryDirectory.name}</p>
-                              <button
-                                disabled={!!busy || saving || committing}
-                                onClick={() => setTemporaryDirectory(undefined)}
-                              >
-                                OPFS kullan
-                              </button>
-                            </>
-                          )}
-                        </details>
-                      </>
+                    {isVideoFormat(scan?.format) && (
+                      <VideoDiskOptions
+                        disabled={!!busy || saving || committing}
+                        temporaryDirectory={temporaryDirectory}
+                        selectTemporaryDirectory={selectTemporaryDirectory}
+                        useOpfs={() => setTemporaryDirectory(undefined)}
+                      />
                     )}
                   </details>
                 )}
