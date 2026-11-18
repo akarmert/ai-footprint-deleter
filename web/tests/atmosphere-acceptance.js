@@ -3,7 +3,7 @@ async page => {
   // AFC_FIXTURES_DIR: absolute path of web/tests/fixtures in this checkout.
   const env = name => {
     const value = globalThis.process?.env?.[name];
-    if (!value) throw new Error(`Set ${name} (see web/README.md) before running this acceptance script`);
+    if (!value) throw new Error(`Set ${name} (see README.md) before running this acceptance script`);
     return value.replace(/[\\/]+$/, '');
   };
   const assert = (value, message) => {

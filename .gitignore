@@ -1,3 +1,4 @@
+# Yerel Python ortamı (C2PA ölçüm aracı) ve eski masaüstü çıktıları
 .venv/
 __pycache__/
 .pytest_cache/
