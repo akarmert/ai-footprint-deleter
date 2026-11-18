@@ -1,27 +1,25 @@
-// Presentational sections of the "Teknik Ayrıntılar ve Gelişmiş Araçlar" panel, moved out of
-// main.tsx unchanged. State and worker lifecycle stay in App.
+// Read-only sections of the "Ayrıntılar" panel. State and the Worker lifecycle stay in App.
 import type { MetadataRecord } from '../engine';
 import type { FootprintResult } from '../footprints';
-import type { MediaScan, VerifiedOutput } from '../protocol';
+import type { VerifiedOutput } from '../protocol';
 import { supportsDiskOutput } from '../output';
+import { formatBytes } from '../app-state';
 import { footprintReason, footprintStatuses } from './Workspace';
 
+const evidenceLabels = { 'explicit-ai': 'AI beyanı', 'metadata-hint': 'AI izi', provenance: 'Kaynak kaydı' } as const;
+
 export function FootprintOperationDetails({ result }: { result: FootprintResult }) {
+  const evidence = (result.after ?? result.before).evidence;
   return (
-    <section aria-label="AI ayak izi işlem ayrıntıları">
-      <h3>İşlem sonucu ve kalan kayıtlar</h3>
+    <section aria-label="İşlem sonucu">
+      <h3>İşlem sonucu</h3>
       <p>
         {footprintStatuses[result.status]} · {footprintReason(result)}
       </p>
-      {(result.after ?? result.before).evidence.map((item, index) => (
+      {result.after && evidence.length > 0 && <p>Çıktıda kalan AI kayıtları:</p>}
+      {evidence.map((item, index) => (
         <article className="record" key={index}>
-          <strong>
-            {item.category === 'explicit-ai'
-              ? 'AI beyanı · Doğrulanmamış'
-              : item.category === 'metadata-hint'
-                ? 'Metadata ipucu'
-                : 'Kaynak geçmişi'}
-          </strong>
+          <strong>{evidenceLabels[item.category]}</strong>
           <pre>{item.source}</pre>
         </article>
       ))}
@@ -29,77 +27,25 @@ export function FootprintOperationDetails({ result }: { result: FootprintResult 
   );
 }
 
-export function CleaningEligibilityNote({
-  scan,
-  output,
-  eligible,
-}: {
-  scan: MediaScan;
-  output?: VerifiedOutput;
-  eligible: MetadataRecord[];
-}) {
-  if (output)
-    return (
-      <p className="scan-note">
-        Bu liste yeniden taranan çıktıda korunan kayıtları gösterir; temizleme seçenekleri kaynak dosyaya aittir.
-      </p>
-    );
-  if (scan.cleaningBlocked)
-    return (
-      <p className="warning">
-        Kaynak/imza kaydı mevcut, belirsiz veya yapı güvenle işlenemiyor: metadata temizliği engellendi. Yalnız
-        desteklenen gömülü C2PA deposu için ayrı kaldırma düğmesi sunulur. İmza doğrulama yapılmaz.
-      </p>
-    );
-  if (!eligible.length)
-    return (
-      <p className="warning">
-        {scan.records.length
-          ? 'Kaldırılabilecek metadata bulunamadı. Renk profili, görüntü yönü veya desteklenmeyen kayıtlar güvenlik için korunuyor.'
-          : 'Desteklenen metadata kaydı bulunamadı; temizlenecek kayıt yok. Bu, tüm metadata’nın yokluğu garantisi değildir.'}
-      </p>
-    );
-  return (
-    <p className="scan-note">
-      Temizlenecek kayıtlar seçilen moda göre belirlenir. Hak/telif bilgisi için gerektiğinde onay istenir.
-    </p>
-  );
-}
-
-export function C2paScopeNote() {
-  return (
-    <p className="scan-note" id="c2pa-scope-note">
-      Yalnız C2PA’yı Kaldır: üst düzey gömülü C2PA deposu ve varsa yalnız ona bağlı tek yerel XMP işaretçisi kaldırılır.
-      Bu depodaki üretici, telif, lisans ve Actions bilgileri çıktıda kaybolur; diğer metadata korunur. İmzalar
-      doğrulanmaz; harici manifestler ve görünmez filigranlar etkilenmez.
-    </p>
-  );
-}
-
-export function CleaningPolicyDetails({
+export function RecordList({
   records,
-  eligible,
+  removable,
   output,
 }: {
   records: MetadataRecord[];
-  eligible: MetadataRecord[];
+  removable: MetadataRecord[];
   output?: VerifiedOutput;
 }) {
   return (
     <details className="metadata">
-      <summary>Temizleme politikası ve doğrulama ayrıntıları</summary>
+      <summary>Kayıtlar ve uygulanan kural</summary>
       <div>
         {records.map(record => (
           <article className="record" key={record.id}>
             <div className="record-heading">
               <strong>{record.kind}</strong>
               <span>
-                {eligible.some(item => item.id === record.id)
-                  ? record.requiresRightsConsent
-                    ? 'Yetki onayıyla'
-                    : 'Temizlenebilir'
-                  : 'Korunur'}{' '}
-                · {record.bytes.toLocaleString('tr-TR')} bayt
+                {removable.some(item => item.id === record.id) ? 'Kaldırılır' : 'Korunur'} · {formatBytes(record.bytes)}
               </span>
             </div>
             <p>{record.reason}</p>
@@ -109,7 +55,7 @@ export function CleaningPolicyDetails({
       </div>
       {output && (
         <details>
-          <summary>Payload SHA-256</summary>
+          <summary>Görüntü verisi SHA-256</summary>
           <code>{output.payloadHash}</code>
         </details>
       )}
@@ -131,27 +77,24 @@ export function VideoDiskOptions({
   return (
     <>
       <p className="warning">
-        Video kaydı güncel masaüstü Chrome/Edge, HTTPS (veya localhost), File System Access ve yeterli geçici yerel alan
-        gerektirir.{' '}
         {supportsDiskOutput()
-          ? 'Dosya yeniden doğrulandıktan sonra ayrı hedefe kaydedilir.'
-          : 'Bu tarayıcı doğrudan disk kaydını desteklemiyor; video çıktısı kaydedilemez. Blob indirme alternatifi yoktur.'}
+          ? 'Video, doğrulandıktan sonra seçtiğin konuma kaydedilir. Masaüstü Chrome veya Edge gerekir.'
+          : 'Bu tarayıcı video kaydını desteklemiyor. Masaüstü Chrome veya Edge kullan.'}
       </p>
       <details className="output">
-        <summary>Geçici video alanı ve disk sınırları</summary>
+        <summary>Geçici alan</summary>
         <p>
-          Varsayılan OPFS kotası işlem öncesinde tahmin edilir; tahmin gerçek boş alan garantisi değildir. Kota
-          hatasında veya büyük videolarda ayrı bir yerel klasör seçebilirsiniz. Bu klasöre geçici medya yazılır ve işlem
-          sonunda silinir; çökmede kalabilir. Kaynak ve hedef için ayrı dosyalar kullanın.
+          İşlem sırasında video, tarayıcının geçici alanına yazılır ve iş bitince silinir. Yer yetmezse geçici dosyalar
+          için ayrı bir klasör seçebilirsin. Tarayıcı çökerse geçici dosya kalabilir.
         </p>
         <button disabled={disabled} onClick={selectTemporaryDirectory}>
-          Geçici yerel klasör seç
+          Geçici klasör seç
         </button>
         {temporaryDirectory && (
           <>
             <p>Seçilen klasör: {temporaryDirectory.name}</p>
             <button disabled={disabled} onClick={useOpfs}>
-              OPFS kullan
+              Tarayıcı alanını kullan
             </button>
           </>
         )}

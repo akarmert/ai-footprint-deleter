@@ -3,11 +3,9 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { stripTypeScriptTypes } from 'node:module';
 import { runInNewContext } from 'node:vm';
-import { scanImage, cleanImage, cleanC2pa } from './engine.ts';
-import { readC2pa } from './c2pa.ts';
+import { scanImage, cleanImage, cleanAllMetadata } from './engine.ts';
 import { validateSelection } from './media.ts';
 import type { Request, Response } from './protocol.ts';
-import type { CleaningMode } from './engine.ts';
 
 function imageWorker() {
   const source = readFileSync(new URL('./inspect.worker.ts', import.meta.url), 'utf8');
@@ -23,41 +21,36 @@ function imageWorker() {
     Blob,
     validateSelection,
     scanImage,
-    cleanImage,
-    cleanC2pa,
-    readC2pa,
+    cleanAllMetadata,
   });
   return { self, messages };
 }
 
-test('image Worker requires explicit valid mode and returns verified mode', async () => {
+test('image Worker removes all metadata and returns a verified output', async () => {
   const { self, messages } = imageWorker();
   const file = new File([readFileSync(new URL('../tests/fixtures/image-1.jpg', import.meta.url))], 'image.jpg');
   await self.onmessage({ data: { type: 'scan', file } });
-  for (const mode of [undefined, 'invalid', null]) {
-    await self.onmessage({
-      data: { type: 'clean', ids: [], rightsConsent: true, mode: mode as unknown as CleaningMode },
-    }); // deliberately invalid
-    assert.equal(messages.at(-1)?.type, 'error');
-  }
-  await self.onmessage({ data: { type: 'clean', ids: [], rightsConsent: true, mode: 'comprehensive' } });
+  await self.onmessage({ data: { type: 'clean-all-metadata' } });
   const last = messages.at(-1);
-  assert.ok(last?.type === 'clean');
-  assert.equal(last.output.mode, 'comprehensive');
+  assert.ok(last?.type === 'cleaned');
+  assert.equal(last.footprintResult.status, 'REMOVED_VERIFIED');
+  assert.equal(last.output?.blob.type, 'image/jpeg');
+  assert.equal(
+    last.output?.scan.records.some(r => r.kind === 'EXIF'),
+    false,
+  );
 });
-test('image Worker rejects missing and non-boolean C2PA consent without producing output', async () => {
+test('image Worker rejects removal before a scan and unknown requests without output', async () => {
   const { self, messages } = imageWorker();
-  await self.onmessage({ data: { type: 'clean-c2pa', c2paConsent: true } });
-  assert.equal(messages.at(-1)?.type, 'error');
+  await self.onmessage({ data: { type: 'clean-all-metadata' } });
+  assert.deepEqual(messages.at(-1), { type: 'error', message: 'Önce görseli yeniden seçin.' });
   const file = new File([readFileSync(new URL('../tests/fixtures/image-1.jpg', import.meta.url))], 'image.jpg');
   await self.onmessage({ data: { type: 'scan', file } });
-  for (const c2paConsent of [undefined, false, 'true', 1, null]) {
-    await self.onmessage({ data: { type: 'clean-c2pa', c2paConsent } as unknown as Request });
-    assert.equal(messages.at(-1)?.type, 'error');
-    assert.match((messages.at(-1) as { message: string }).message, /açık onay/);
-  }
+  for (const type of ['clean', 'clean-c2pa', 'clean-footprints'])
+    await self.onmessage({ data: { type } as unknown as Request });
+  assert.deepEqual(messages.at(-1), { type: 'error', message: 'Geçersiz işlem.' });
   assert.equal(
-    messages.some(message => message.type === 'clean'),
+    messages.some(message => message.type === 'cleaned'),
     false,
   );
 });
@@ -79,8 +72,8 @@ test('image Worker rejects oversized images before reading bytes and invalidates
   await self.onmessage({ data: { type: 'scan', file: oversized } });
   assert.deepEqual(messages.at(-1), { type: 'error', message: 'Görsel sınırı 128 MiB.' });
   assert.equal(reads, 0);
-  await self.onmessage({ data: { type: 'clean', ids: [], rightsConsent: true, mode: 'safe' } });
-  assert.deepEqual(messages.at(-1), { type: 'error', message: 'Önce görseli yeniden tarayın.' });
+  await self.onmessage({ data: { type: 'clean-all-metadata' } });
+  assert.deepEqual(messages.at(-1), { type: 'error', message: 'Önce görseli yeniden seçin.' });
 });
 
 test('image Worker ignores concurrent requests until the current scan completes', async () => {
@@ -92,14 +85,14 @@ test('image Worker ignores concurrent requests until the current scan completes'
   });
   const file = { name: 'image.jpg', size: bytes.length, arrayBuffer: () => pending } as File;
   const scanning = self.onmessage({ data: { type: 'scan', file } });
-  await self.onmessage({ data: { type: 'clean', ids: [], rightsConsent: true, mode: 'safe' } });
+  await self.onmessage({ data: { type: 'clean-all-metadata' } });
   assert.equal(messages.length, 0);
   release(Uint8Array.from(bytes).buffer);
   await scanning;
   assert.equal(messages.length, 1);
   assert.equal(messages[0].type, 'scan');
-  await self.onmessage({ data: { type: 'clean', ids: [], rightsConsent: true, mode: 'safe' } });
-  assert.equal(messages.at(-1)?.type, 'clean');
+  await self.onmessage({ data: { type: 'clean-all-metadata' } });
+  assert.equal(messages.at(-1)?.type, 'cleaned');
 });
 
 const encode = (text: string) => new TextEncoder().encode(text);

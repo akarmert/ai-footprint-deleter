@@ -1,12 +1,15 @@
-import { scanImage, cleanImage, cleanC2pa, cleanFootprints, cleanAllMetadata } from './engine';
+import { scanImage, cleanAllMetadata } from './engine';
 import { validateSelection } from './media';
 import type { Request, Response } from './protocol';
+
 const scope = self as unknown as {
   onmessage: ((event: MessageEvent<Request>) => void) | null;
   postMessage: (result: Response) => void;
 };
+const MIME = { JPEG: 'image/jpeg', PNG: 'image/png', WebP: 'image/webp' } as const;
 let source: Uint8Array | undefined;
 let working = false;
+
 scope.onmessage = async ({ data }) => {
   if (working) return;
   working = true;
@@ -14,58 +17,27 @@ scope.onmessage = async ({ data }) => {
     if (data.type === 'scan') {
       source = undefined;
       const format = validateSelection(data.file);
-      if (format === 'MP4' || format === 'MOV')
-        throw new Error(
-          'Görsel işleyicisi video dosyalarını işlemez; MP4/MOV dosyaları video işleyicisine yönlendirilmelidir.',
-        );
+      if (format === 'MP4' || format === 'MOV') throw new Error('Video dosyaları bu işleyiciyle taranmaz.');
       source = new Uint8Array(await data.file.arrayBuffer());
       const scan = scanImage(source);
-      if (scan.format !== format) throw new Error('Dosya uzantısı ve kapsayıcı formatı uyuşmuyor.');
+      if (scan.format !== format) throw new Error('Dosya uzantısı ile dosyanın gerçek biçimi uyuşmuyor.');
       scope.postMessage({ type: 'scan', scan });
-    } else if (data.type === 'clean-footprints' || data.type === 'clean-all-metadata') {
-      if (!source) throw new Error('Önce görseli yeniden tarayın.');
-      const all = data.type === 'clean-all-metadata';
-      const { footprintResult, output } = all ? await cleanAllMetadata(source) : await cleanFootprints(source, data);
-      if (!output) scope.postMessage({ type: 'clean-footprints', footprintResult });
-      else {
-        const { data: bytes, ...verified } = output;
-        const mime = { JPEG: 'image/jpeg', PNG: 'image/png', WebP: 'image/webp' }[output.scan.format];
-        scope.postMessage({
-          type: 'clean-footprints',
-          footprintResult,
-          output: {
-            ...verified,
-            ...(all ? { operation: 'all-metadata-removal' as const } : {}),
-            footprintResult,
-            blob: new Blob([bytes as Uint8Array<ArrayBuffer>], { type: mime }),
-          },
-        });
+    } else if (data.type === 'clean-all-metadata') {
+      if (!source) throw new Error('Önce görseli yeniden seçin.');
+      const { footprintResult, output } = await cleanAllMetadata(source);
+      if (!output) {
+        scope.postMessage({ type: 'cleaned', footprintResult });
+        return;
       }
-    } else if (data.type === 'clean' || data.type === 'clean-c2pa') {
-      if (!source) throw new Error('Önce görseli yeniden tarayın.');
-      if (data.type === 'clean-c2pa' && data.c2paConsent !== true)
-        throw new Error('C2PA kaldırma için açık onay gerekir.');
-      if (data.type === 'clean' && data.mode !== 'safe' && data.mode !== 'comprehensive')
-        throw new Error('Geçersiz temizleme modu.');
-      const result =
-        data.type === 'clean-c2pa'
-          ? await cleanC2pa(source, data.c2paConsent)
-          : await cleanImage(source, data.ids, data.rightsConsent, data.mode);
-      const mime = { JPEG: 'image/jpeg', PNG: 'image/png', WebP: 'image/webp' }[result.scan.format];
-      // Blob owns verified bytes. No full-resolution pixel decode or network operation.
-      const blob = new Blob([result.data as Uint8Array<ArrayBuffer>], { type: mime });
+      // The Blob owns the verified bytes; no pixel decode or network request happens here.
+      const { data: bytes, ...verified } = output;
       scope.postMessage({
-        type: 'clean',
+        type: 'cleaned',
+        footprintResult,
         output: {
-          ...(data.type === 'clean-c2pa' ? { operation: 'c2pa-store-removal' as const } : {}),
-          mode: result.mode,
-          blob,
-          scan: result.scan,
-          removed: result.removed,
-          retained: result.retained,
-          payloadHash: result.payloadHash,
-          checks: result.checks,
-          changedFields: result.changedFields,
+          ...verified,
+          footprintResult,
+          blob: new Blob([bytes as Uint8Array<ArrayBuffer>], { type: MIME[output.scan.format] }),
         },
       });
     } else throw new Error('Geçersiz işlem.');
@@ -73,7 +45,7 @@ scope.onmessage = async ({ data }) => {
     if (data.type === 'scan') source = undefined;
     scope.postMessage({
       type: 'error',
-      message: error instanceof Error ? error.message : 'Yerel işlem başarısız. Çıktı sunulmadı.',
+      message: error instanceof Error ? error.message : 'İşlem tamamlanamadı; çıktı verilmedi.',
     });
   } finally {
     working = false;

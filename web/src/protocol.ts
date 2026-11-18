@@ -1,20 +1,16 @@
-import type { Scan, CleaningMode, ChangedField } from './engine';
+import type { Scan, ChangedField } from './engine';
 import type { VideoScan } from './video';
 import type { C2paReport } from './c2pa-types';
 import type { FootprintResult } from './footprints';
+
 export type MediaScan = (Scan | VideoScan) & { provenance?: C2paReport };
-export type Request =
-  | { type: 'scan'; file: File }
-  | { type: 'clean'; ids: string[]; rightsConsent: boolean; mode: CleaningMode }
-  | { type: 'clean-c2pa'; c2paConsent: boolean }
-  | { type: 'clean-footprints'; c2paConsent: boolean; rightsConsent: boolean }
-  | { type: 'clean-all-metadata' };
+
+// Image Worker (inspect.worker.ts)
+export type Request = { type: 'scan'; file: File } | { type: 'clean-all-metadata' };
 export interface VerifiedOutput {
-  footprintResult?: FootprintResult;
-  operation?: 'c2pa-store-removal' | 'all-metadata-removal';
-  /** Kinds of blocks kept after an all-metadata removal (e.g. ICC). */
-  retainedKinds?: string[];
-  mode: CleaningMode;
+  footprintResult: FootprintResult;
+  /** Kinds of blocks deliberately kept (e.g. ICC, orientation EXIF). */
+  retainedKinds: string[];
   blob: Blob;
   scan: Scan;
   removed: number;
@@ -25,9 +21,10 @@ export interface VerifiedOutput {
 }
 export type Response =
   | { type: 'scan'; scan: MediaScan }
-  | { type: 'clean'; output: VerifiedOutput }
-  | { type: 'clean-footprints'; footprintResult: FootprintResult; output?: VerifiedOutput }
+  | { type: 'cleaned'; footprintResult: FootprintResult; output?: VerifiedOutput }
   | { type: 'error'; message: string };
+
+// Video Worker (video.worker.ts)
 export type VideoRequest =
   | { type: 'scan'; file: File; format: 'MP4' | 'MOV' }
   | {
