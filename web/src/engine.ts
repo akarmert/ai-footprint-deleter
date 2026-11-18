@@ -81,7 +81,13 @@ const ascii = (data: Uint8Array, start = 0, end = data.length): string => {
 };
 const text = (data: Uint8Array): string => decoder.decode(data.subarray(0, MAX_TEXT));
 const preview = (value: string): string => value.replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, ' ').slice(0, PREVIEW);
-const equal = (a: Uint8Array, b: Uint8Array): boolean => a.length === b.length && a.every((v, i) => v === b[i]);
+// Plain loop: Array.prototype.every costs a callback per byte, which dominated verification of
+// large retained blocks (tens of MiB of JPEG entropy data, compared several times per operation).
+function equal(a: Uint8Array, b: Uint8Array): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
+}
 const u16 = (a: Uint8Array, p: number, little = false): number =>
   little ? a[p]! + a[p + 1]! * 256 : a[p]! * 256 + a[p + 1]!;
 const u32 = (a: Uint8Array, p: number, little = false): number =>
@@ -89,16 +95,49 @@ const u32 = (a: Uint8Array, p: number, little = false): number =>
     ? a[p]! + a[p + 1]! * 256 + a[p + 2]! * 65536 + a[p + 3]! * 16777216
     : a[p]! * 16777216 + a[p + 1]! * 65536 + a[p + 2]! * 256 + a[p + 3]!;
 const u24 = (a: Uint8Array, p: number): number => a[p]! + a[p + 1]! * 256 + a[p + 2]! * 65536;
-const crcTable = new Uint32Array(256).map((_, n) => {
-  let c = n;
-  for (let i = 0; i < 8; i++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
-  return c >>> 0;
-});
-function crc(data: Uint8Array): number {
-  let c = 0xffffffff;
-  for (const value of data) c = crcTable[(c ^ value) & 255]! ^ (c >>> 8);
+// CRC-32 (PNG/zlib polynomial), slicing-by-8: every PNG parse verifies every chunk CRC, and one
+// cleaning operation parses the file several times, so this runs over the whole file repeatedly.
+const crcTables = (() => {
+  const tables = Array.from({ length: 8 }, () => new Uint32Array(256));
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let i = 0; i < 8; i++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    tables[0]![n] = c >>> 0;
+  }
+  for (let n = 0; n < 256; n++)
+    for (let k = 1; k < 8; k++) tables[k]![n] = (tables[k - 1]![n]! >>> 8) ^ tables[0]![tables[k - 1]![n]! & 255]!;
+  return tables;
+})();
+export function crc32(data: Uint8Array): number {
+  const [t0, t1, t2, t3, t4, t5, t6, t7] = crcTables as [
+    Uint32Array,
+    Uint32Array,
+    Uint32Array,
+    Uint32Array,
+    Uint32Array,
+    Uint32Array,
+    Uint32Array,
+    Uint32Array,
+  ];
+  let c = 0xffffffff,
+    i = 0;
+  const n = data.length;
+  for (; i + 8 <= n; i += 8) {
+    const a = (c ^ (data[i]! | (data[i + 1]! << 8) | (data[i + 2]! << 16) | (data[i + 3]! << 24))) >>> 0;
+    c =
+      t7[a & 255]! ^
+      t6[(a >>> 8) & 255]! ^
+      t5[(a >>> 16) & 255]! ^
+      t4[a >>> 24]! ^
+      t3[data[i + 4]!]! ^
+      t2[data[i + 5]!]! ^
+      t1[data[i + 6]!]! ^
+      t0[data[i + 7]!]!;
+  }
+  for (; i < n; i++) c = t0[(c ^ data[i]!) & 255]! ^ (c >>> 8);
   return (c ^ 0xffffffff) >>> 0;
 }
+const crc = crc32;
 function exif(data: Uint8Array): {
   orientation: number | null;
   value: string;
@@ -1533,10 +1572,17 @@ export async function cleanAllMetadata(
     if (finalScan.records.some(record => isRemovable(record, 'safe'))) throw new Error('Removable metadata remains');
     for (const key of ['format', 'width', 'height', 'alpha', 'orientation'] as const)
       if (initial[key] !== finalScan[key]) throw new Error('Original/final image properties changed');
-    const original = parse(source),
-      final = parse(finalData);
-    const hash = await payloadHash(final.parts);
-    if ((await payloadHash(original.parts)) !== hash) throw new Error('Original/final payload changed');
+    // Encoded image payloads compared pairwise against the original (stricter than comparing two
+    // SHA-256 values and without joining two more full-size copies); the reported hash is the one
+    // the last stage computed over the final output.
+    const originalImages = parse(source).parts.filter(p => p.image),
+      finalImages = parse(finalData).parts.filter(p => p.image);
+    if (
+      originalImages.length !== finalImages.length ||
+      originalImages.some((p, i) => !equal(p.payload, finalImages[i]!.payload))
+    )
+      throw new Error('Original/final payload changed');
+    const hash = stage!.payloadHash;
     plan.preserved = finalScan.records.map(r => r.id);
     const status = after.evidence.length ? 'PARTIALLY_REMOVED' : 'REMOVED_VERIFIED';
     return {
@@ -1583,9 +1629,13 @@ export async function verifyOutput(
     const expected = expectedBlocks[i]!,
       raw = output.subarray(actual.start, actual.end);
     if (expected.length !== raw.length || part.kind !== actual.kind) fail('Tutulan blok sırası değişti');
+    if (part.kind !== 'VP8X') {
+      if (!equal(expected, raw)) fail('Tutulan blok baytları değişti');
+      return;
+    }
     for (let j = 0; j < raw.length; j++) {
       let value = expected[j]!;
-      if (part.kind === 'VP8X' && j === 8) {
+      if (j === 8) {
         if (removedKinds.has('ICCP')) value &= ~32;
         if (removedKinds.has('EXIF')) value &= ~8;
         if (removedKinds.has('XMP ')) value &= ~4;
