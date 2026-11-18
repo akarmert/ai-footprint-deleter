@@ -2,6 +2,7 @@
 
 ## Web — yayımlanmamış
 
+- Yeni „Tüm Metadata'yı Kaldır" düğmesi: C2PA ile birlikte EXIF, XMP, IPTC, yorumlar ve PNG metinleri tek tıkta, tek doğrulanmış işlemde silinir; ICC ve yön bilgisi taşıyan EXIF korunur. Gerçek Gemini/ChatGPT dosyalarında tam kaldırma doğrulandı.
 - Tam incelenemeyen metadata (çoğu fotoğraftaki EXIF/ICC) artık „METADATA ANALİZİ TAMAMLANAMADI" yerine „METADATA BULUNDU" başlığıyla gösterilir; tamamen başarısız tarama eski başlığı korur.
 - Sonuç özetinde bulunan her durum (AI beyanı, AI ipucu, yalnız C2PA kaynak kaydı) „AI METADATA BULUNDU" başlığını kullanır; ayrım açıklama cümlesinde kalır.
 - Dosya bilgilerinde „AI aracı (beyan)": dosyanın kendi C2PA/metadata kayıtlarında adı geçen AI aracı (ör. Google Gemini, ChatGPT, Midjourney, Adobe Firefly, Stable Diffusion) seçili dosya kartında ve Dosya Bilgileri bölümünde gösterilir. Doğrulanmamış beyandır; kayıt yoksa „Dosyada belirtilmemiş" yazar.

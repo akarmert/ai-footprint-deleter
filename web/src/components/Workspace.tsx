@@ -413,10 +413,21 @@ export function VerificationResult({
       <section className="verification" role="status">
         <span className="chip">Çıktı doğrulandı</span>
         <h3>
-          {output.footprintResult.status === 'PARTIALLY_REMOVED'
-            ? 'Desteklenen kayıtların bir kısmı kaldırıldı; diğerleri korundu'
-            : 'Desteklenen kaynak ve metadata kayıtları kaldırıldı'}
+          {output.operation === 'all-metadata-removal'
+            ? output.footprintResult.status === 'PARTIALLY_REMOVED'
+              ? 'Metadata kaldırıldı; bazı AI kayıtları korunan bloklarda kaldı'
+              : 'Bütün kaldırılabilir metadata kaldırıldı'
+            : output.footprintResult.status === 'PARTIALLY_REMOVED'
+              ? 'Desteklenen kayıtların bir kısmı kaldırıldı; diğerleri korundu'
+              : 'Desteklenen kaynak ve metadata kayıtları kaldırıldı'}
         </h3>
+        {output.operation === 'all-metadata-removal' && (
+          <p>
+            {output.retainedKinds?.length
+              ? `Bilerek korunanlar: ${output.retainedKinds.join(', ')}. Bunlar görüntünün doğru görünmesi (renk profili, yön, görüntü başlığı) veya güvenli işlenmesi için silinmez.`
+              : 'Çıktıda metadata bloğu kalmadı.'}
+          </p>
+        )}
         <p>
           {output.removed} kayıt kaldırıldı · {output.retained} kayıt korundu. Sıkıştırılmış görüntü yükünün eşitliği
           doğrulandı; kaynak dosya değişmedi.

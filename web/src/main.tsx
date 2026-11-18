@@ -291,14 +291,14 @@ function App() {
       setError(cause instanceof Error ? cause.message : 'Dosya seçilemedi.');
     }
   }
-  const { eligible, needsConsent, c2paRemovable, imageScan, footprintPlan, directRemovable } = deriveActions(
+  const { eligible, needsConsent, c2paRemovable, imageScan, footprintPlan, allMetadataRemovable } = deriveActions(
     scan,
     mode,
   );
   const confirming = pendingConsent;
-  function requestFootprints() {
+  function requestAllMetadata() {
     if (
-      !directRemovable ||
+      !allMetadataRemovable ||
       !worker.current ||
       busy ||
       saving ||
@@ -315,7 +315,7 @@ function App() {
     setError('');
     setBusy('clean');
     expire(worker.current);
-    worker.current.postMessage({ type: 'clean-footprints', c2paConsent: true, rightsConsent: false });
+    worker.current.postMessage({ type: 'clean-all-metadata' });
   }
   function removeC2pa() {
     if (!c2paRemovable || !worker.current || busy || saving || committing || operation.current || output) return;
@@ -495,10 +495,11 @@ function App() {
                     <div className="actions">
                       <button
                         className="primary"
-                        id="remove-footprints"
-                        onClick={requestFootprints}
+                        id="remove-all-metadata"
+                        onClick={requestAllMetadata}
+                        aria-describedby="all-metadata-scope-note"
                         disabled={
-                          !directRemovable ||
+                          !allMetadataRemovable ||
                           !!busy ||
                           saving ||
                           committing ||
@@ -507,9 +508,14 @@ function App() {
                           !!footprintResult
                         }
                       >
-                        Remove AI Footprint
+                        Tüm Metadata'yı Kaldır
                       </button>
                     </div>
+                    <p className="scan-note" id="all-metadata-scope-note">
+                      AI kaynak kaydı (C2PA) ve AI beyanları dahil EXIF (konum, cihaz, tarih), XMP, IPTC, yorumlar ve
+                      PNG metinleri tek seferde silinir; telif/yazar bilgileri de gider. Renk profili (ICC) ve görüntü
+                      yönünü taşıyan EXIF görüntünün doğru görünmesi için korunur.
+                    </p>
                     <p className="scan-note">
                       Yalnız desteklenen metadata kapsanır; piksel ve görünmez filigran analizi yapılmaz. Kaynak dosya
                       korunur.

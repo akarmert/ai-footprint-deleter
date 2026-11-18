@@ -24,7 +24,12 @@ export function deriveActions(scan: MediaScan | undefined, mode: CleaningMode) {
     ) ?? [];
   const directRemovable =
     !!footprintPlan && !footprintPlan.blocked && (footprintPlan.removeC2pa || directMetadataIds.length > 0);
-  return { eligible, needsConsent, c2paRemovable, imageScan, footprintPlan, directRemovable };
+  // "Tüm Metadata'yı Kaldır": images only; any provenance must be the removable C2PA store, and
+  // there must be something to remove (the C2PA store or a safe-mode removable block).
+  const safeRemovable = imageScan?.records.some(record => isRemovable(record, 'safe')) ?? false;
+  const allMetadataRemovable =
+    !!imageScan && (!imageScan.cleaningBlocked || c2paRemovable) && (c2paRemovable || safeRemovable);
+  return { eligible, needsConsent, c2paRemovable, imageScan, footprintPlan, directRemovable, allMetadataRemovable };
 }
 
 /** `<name>-removed.<ext>` for a verified image output; unsafe file-name characters become `_`. */
