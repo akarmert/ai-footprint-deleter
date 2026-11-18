@@ -15,7 +15,7 @@ concurrency:
 jobs:
   test-build:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: web
@@ -28,9 +28,17 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
 
+      - name: Restore ffmpeg packages
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/apt-ffmpeg
+          key: apt-ffmpeg-${{ runner.os }}-${{ runner.arch }}-v1
+
       - name: Install ffmpeg (video fixture tests)
         working-directory: .
-        timeout-minutes: 16
+        timeout-minutes: 20
+        env:
+          APT_CACHE_DIR: ${{ runner.temp }}/apt-ffmpeg
         run: .github/scripts/install-ffmpeg.sh
 
       - run: npm ci
@@ -42,7 +50,7 @@ jobs:
 
   e2e:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: web
@@ -55,9 +63,17 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
 
+      - name: Restore ffmpeg packages
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/apt-ffmpeg
+          key: apt-ffmpeg-${{ runner.os }}-${{ runner.arch }}-v1
+
       - name: Install ffmpeg (video browser test)
         working-directory: .
-        timeout-minutes: 16
+        timeout-minutes: 20
+        env:
+          APT_CACHE_DIR: ${{ runner.temp }}/apt-ffmpeg
         run: .github/scripts/install-ffmpeg.sh
 
       - run: npm ci
