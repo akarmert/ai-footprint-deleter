@@ -156,3 +156,23 @@ test('genuine JPEG Photoshop IPTC copyright resource remains unless explicitly a
   await assert.rejects(cleanImage(data, [record.id], false));
   assert.deepEqual((await cleanImage(data, [record.id], true)).data, original);
 });
+
+test('crc32 (slicing-by-8) matches zlib for every length and alignment', async () => {
+  const { crc32 } = await import('./engine.ts');
+  const { crc32: zlibCrc } = await import('node:zlib');
+  const data = new Uint8Array(4099);
+  for (let i = 0; i < data.length; i++) data[i] = (i * 2654435761) >>> 24;
+  for (const [start, end] of [
+    [0, 0],
+    [0, 1],
+    [0, 7],
+    [0, 8],
+    [0, 9],
+    [3, 4099],
+    [1, 4096],
+    [5, 13],
+  ] as const) {
+    const slice = data.subarray(start, end);
+    assert.equal(crc32(slice), zlibCrc(slice), `${start}-${end}`);
+  }
+});

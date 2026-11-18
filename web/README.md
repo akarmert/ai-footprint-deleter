@@ -112,6 +112,16 @@ Her satırı PASS/PARTIAL/FAIL ve ölçüm/log ile doldurun; kritik native/Linux
 
 Video sınırı ondalık **1 GB = 1.000.000.000 bayt**; Faz 3 UI MP4/MOV kabul eder. Görsel üst sınırı **128 MiB = 134.217.728 bayt**, boyut sınırı **40 megapiksel**, tek parça **64 MiB**, toplam metadata **16 MiB**, parça sayısı **4096**, kayıt önizlemesi **512 karakter**. Bunlar sunucu upload limitleri değil yerel güvenlik sınırlarıdır. Sınırlar mobil/bellek performansı garantisi değildir.
 
+**Görsel performans ölçümü — 18 Kasım 2026** (Node 24, Windows, sınıra yakın gürültülü Pillow görselleri + sentetik C2PA deposu; her ölçüm ayrı süreç, `process.resourceUsage().maxRSS`; ölçüm betiğinin kendi iki dosya kopyası ve Node tabanı RSS'e dahildir; tarayıcı Worker'ında değerler farklı olabilir):
+
+| Dosya | Tarama | Tüm Metadata'yı Kaldır | Önceki akış (`cleanFootprints`) | RSS tepe (kaldırma) |
+|---|---|---|---|---|
+| PNG 120,3 MiB, 39,9 MP | 0,14 s (önce 0,52 s) | 2,0 s (önce 5,6 s) | 3,0 s (önce 8,4 s) | ~1,0 GB |
+| JPEG 53,2 MiB, 39,9 MP, EXIF | 0,07 s | 1,4 s (önce 1,9 s) | 1,6 s (önce 2,0 s) | ~0,55–0,65 GB |
+| WebP 11 MiB, 12 MP, EXIF | 0,004 s | 0,08 s (önce 0,21 s) | 0,09 s | ~0,17 GB |
+
+İyileştirmeler doğrulamayı gevşetmedi: CRC-32 slicing-by-8 (zlib ile birebir test edildi), bayt karşılaştırmada `Array.every` yerine düz döngü, `cleanAllMetadata`'da iki ayrı tam boyutlu birleştirme + SHA-256 yerine görüntü yükü parçalarının orijinalle tek tek karşılaştırılması (hash eşitliğinden sıkı). Bellek tepe değeri değişmedi: tek işlem dosyayı yaklaşık 10 kez ayrıştırır ve kaynak, C2PA aşaması ve son çıktı için ayrı tam kopyalar tutar; büyük dosyalarda mobil tarayıcılarda bellek yetersizliği riski sürer.
+
 Faz 1'deki sınırlı başlık okuma yardımcıları `src/media.ts` içinde korunur; Faz 2 görsel motoru yalnız <=128 MiB görsel için Worker içinde tam dosyayı okur. Orijinal, çıktı ve hash scratch/Blob kopyaları nedeniyle toplam bellek dosya boyutunun birkaç katına çıkabilir; mobil bellek garantisi yoktur. Görsel piksel decode veya canvas yeniden kodlaması yapılmaz. İptal/kaynak değişimi Worker'ı sonlandırır; eski yanıtlar kimlik kontrolüyle yok sayılır ve indirme URL'leri bırakılır. Worker 120 saniyede sonuçlanmazsa iptal edilir. Bu tam dosya belleği davranışı videoya uygulanmaz. `src/media.ts` ayrıca sıralı, geri basınçla tüketilebilen parçalı okuma iteratorü sağlar; tüm videoyu `arrayBuffer()` ile belleğe almak uygun değildir. Eski `inspect()` yardımcısı yalnız başlık ön kontrolüdür; Faz 2 UI bunun yerine tam görsel kapsayıcı motorunu çağırır. MIME bilgisine güvenilmez; uzantı ve gerçek görsel formatı eşleşmelidir. MP4/MOV için ayrı video Worker kullanılır. `src/output.ts` kullanıcı etkileşimiyle File System Access handle alır. Video Blob indirme alternatifi yoktur; desteklenmeyen tarayıcıda tarama yapılabilir ama video kaydı açık hatayla reddedilir. Görsel çıktısı doğrulanmış Blob ile indirilir.
 
 ## Faz 3 video çıktı ve gizlilik sözleşmesi
