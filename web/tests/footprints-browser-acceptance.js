@@ -174,7 +174,7 @@ async (page) => {
     assert(await scrollCount() === 0, 'Visible result scrolled unnecessarily');
     await page.emulateMedia({ reducedMotion: 'no-preference' });
     await resetScroll(); await upload('c2pa'); await page.waitForTimeout(700);
-    assert(await page.locator('#footprint-title').textContent() === 'DİJİTAL KAYNAK KAYDI BULUNDU', 'C2PA mislabeled as AI');
+    assert(await page.locator('#footprint-title').textContent() === 'AI METADATA BULUNDU', 'C2PA-only heading');
     assert(await page.evaluate(() => window.__testScrolls[0]?.behavior) === 'smooth', 'Normal motion is not smooth');
     await page.evaluate(() => { window.__testCleanRequests = []; });
     const formats = [];
@@ -213,7 +213,7 @@ async (page) => {
     }
     await upload('none'); assert(await remove.isDisabled(), 'No-record removal enabled');
     await upload('hint'); assert(await remove.isDisabled(), 'Mixed hint removal enabled');
-    assert(await page.locator('#footprint-title').textContent() === 'AI METADATA İPUCU BULUNDU', 'Hint heading replaced by unsupported warning');
+    assert(await page.locator('#footprint-title').textContent() === 'AI METADATA BULUNDU', 'Hint heading replaced by unsupported warning');
     await upload('incomplete');
     assert(await page.locator('#footprint-title').textContent() === 'METADATA ANALİZİ TAMAMLANAMADI', 'Incomplete scan shown as absence');
     await upload('rights'); assert(await remove.isDisabled(), 'Rights-only dedicated metadata enabled direct removal');

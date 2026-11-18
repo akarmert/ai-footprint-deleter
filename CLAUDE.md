@@ -40,5 +40,6 @@ npm start       # dist'i http://localhost:3000 üzerinde sunar
 - UI açıklama metinleri Türkçe. Bazı etiketler **bilinçli olarak İngilizce** kalır (karar 2026-11-18): "Remove AI Footprint", "Download", "File Type", "Image Size", "Megapixels", "C2PA Status", "Actions History" ve benzeri. Bunları Türkçeleştirme.
 - C2PA kaldırma onay penceresi açmaz (karar 2026-11-18): hem `Remove AI Footprint` hem `Yalnız C2PA’yı Kaldır` düğmeye basınca çalışır; kapsam ve kaybolan bilgiler düğmenin yanında yazılır. Hak/telif gerektiren metadata temizliğinin `ConsentDialog`'u ayrı ve korunur.
 - Tüm çıktı dosyaları `<ad>-removed.<uzantı>` adını alır (görsel, C2PA, metadata, video).
+- Sonuç özetinde bir şey bulunduğunda başlık her zaman **AI METADATA BULUNDU** olur (karar 2026-11-18): açık AI beyanı, araç/parametre ipucu ve yalnız C2PA kaynak kaydı aynı başlığı kullanır. Farkı başlığın altındaki açıklama cümlesi söyler; o cümleler ayrı kalmalı.
 - Satır sonları LF (`.gitattributes`). Lint/format aracı henüz yok.
 - `.kilo/` günlükleri ve `*.zip` yedekleri commit'lenmez.

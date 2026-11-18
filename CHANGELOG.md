@@ -2,6 +2,7 @@
 
 ## Web — yayımlanmamış
 
+- Sonuç özetinde bulunan her durum (AI beyanı, AI ipucu, yalnız C2PA kaynak kaydı) „AI METADATA BULUNDU" başlığını kullanır; ayrım açıklama cümlesinde kalır.
 - Dosya bilgilerinde „AI aracı (beyan)": dosyanın kendi C2PA/metadata kayıtlarında adı geçen AI aracı (ör. Google Gemini, ChatGPT, Midjourney, Adobe Firefly, Stable Diffusion) seçili dosya kartında ve Dosya Bilgileri bölümünde gösterilir. Doğrulanmamış beyandır; kayıt yoksa „Dosyada belirtilmemiş" yazar.
 - Çoklu görüntü (MPF / Ultra HDR) JPEG desteği: EOI sonrası ikincil görüntüler artık taramayı reddettirmiyor; MPF dizini tam doğrulanır, ikincil görüntüler bayt bayt korunur, kaldırmalarda MPF boyut/offset alanları güncellenir. İkincil görüntülerdeki metadata kaldırılmaz ve bu açıkça bildirilir.
 - PNG `caBX` ve WebP `C2PA` manifest içeriği okunur; AI beyanı listesi `compositeWithTrainedAlgorithmicMedia`'yı da kapsar.
