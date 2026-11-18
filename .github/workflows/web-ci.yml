@@ -54,6 +54,10 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
 
+      - name: Install ffmpeg (video browser test)
+        working-directory: .
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+
       - run: npm ci
       - run: npm run build
       - run: npx playwright install --with-deps chromium

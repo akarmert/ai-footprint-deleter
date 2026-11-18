@@ -1,9 +1,9 @@
 import { StrictMode, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { validateSelection } from './media';
 import type { CleaningMode } from './engine';
 import { deriveActions, downloadName, isVideoFormat, videoOutputName } from './app-state';
 import { useResultScroll } from './hooks/useResultScroll';
+import { useMediaJob } from './hooks/useMediaJob';
 import {
   C2paScopeNote,
   CleaningEligibilityNote,
@@ -11,12 +11,10 @@ import {
   FootprintOperationDetails,
   VideoDiskOptions,
 } from './components/AdvancedTools';
-import type { MediaScan, Response, VerifiedOutput, VideoResponse } from './protocol';
 import { chooseOutput, chooseTemporaryDirectory, supportsDiskOutput } from './output';
 import { MetadataResults } from './MetadataResults';
 import { Header, Hero, HomeInformation, Footer } from './components/Home';
 import { ConsentDialog } from './components/ConsentDialog';
-import type { FootprintResult } from './footprints';
 import { Atmosphere } from './components/Atmosphere';
 import {
   FileDropzone,
@@ -31,15 +29,61 @@ import {
 import './style.css';
 
 function App() {
-  const [file, setFile] = useState<File>();
-  const [scan, setScan] = useState<MediaScan>();
-  const [output, setOutput] = useState<VerifiedOutput>();
   const confirmation = useRef<HTMLDialogElement>(null);
   const [pendingConsent, setPendingConsent] = useState(false);
-  const [footprintResult, setFootprintResult] = useState<FootprintResult>();
-  const operation = useRef<'metadata-consent' | 'clean' | undefined>(undefined);
   const consentTrigger = useRef<HTMLElement | null>(null);
   const focusReturn = useRef<number | undefined>(undefined);
+  const [mode, setMode] = useState<CleaningMode>('safe');
+  const [dragging, setDragging] = useState(false);
+  const input = useRef<HTMLInputElement>(null);
+  const [saving, setSaving] = useState(false);
+  const [temporaryDirectory, setTemporaryDirectory] = useState<FileSystemDirectoryHandle>();
+  const job = useMediaJob({
+    onReset: () => {
+      pendingResultScroll.current = undefined;
+      setSaving(false);
+      setTemporaryDirectory(undefined);
+      confirmation.current?.close();
+      setPendingConsent(false);
+      if (input.current) input.current.value = '';
+    },
+    onSelected: version => {
+      pendingResultScroll.current = { version, interrupted: false };
+    },
+    resetInput: () => {
+      if (input.current) input.current.value = '';
+    },
+  });
+  const {
+    file,
+    scan,
+    output,
+    footprintResult,
+    error,
+    setError,
+    busy,
+    setBusy,
+    committing,
+    uncertainCommit,
+    videoDone,
+    videoRemoved,
+    worker,
+    videoWorker,
+    generation,
+    operation,
+    cancelling,
+    supported,
+    clear,
+    cancel,
+    expire,
+    select,
+  } = job;
+  const resultTarget = useRef<HTMLElement>(null);
+  const pendingResultScroll = useResultScroll(resultTarget, generation, !busy && (!!scan || !!error), [
+    scan,
+    busy,
+    error,
+  ]);
   function finishConsent(kind: 'metadata-consent') {
     if (operation.current === kind) {
       operation.current = undefined;
@@ -56,29 +100,12 @@ function App() {
     focusReturn.current = undefined;
     if (generation.current === version && !operation.current && consentTrigger.current?.isConnected)
       consentTrigger.current.focus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- refs are stable; runs when the dialog closes
   }, [pendingConsent]);
-  const [mode, setMode] = useState<CleaningMode>('safe');
   function changeMode(next: CleaningMode) {
     if (busy || saving || committing || operation.current || output || footprintResult || videoDone) return;
     setMode(next);
   }
-  const [error, setError] = useState('');
-  const [busy, setBusy] = useState<'' | 'scan' | 'clean'>('');
-  const [dragging, setDragging] = useState(false);
-  const worker = useRef<Worker | null>(null);
-  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const input = useRef<HTMLInputElement>(null);
-  const downloadURL = useRef<string | undefined>(undefined);
-  const supported = typeof Worker !== 'undefined';
-  function revoke() {
-    if (downloadURL.current) URL.revokeObjectURL(downloadURL.current);
-    downloadURL.current = undefined;
-  }
-  const videoWorker = useRef(false);
-  const [videoDone, setVideoDone] = useState(false);
-  const [videoRemoved, setVideoRemoved] = useState(0);
-  const [saving, setSaving] = useState(false);
-  const [temporaryDirectory, setTemporaryDirectory] = useState<FileSystemDirectoryHandle>();
   async function selectTemporaryDirectory() {
     const version = generation.current;
     setSaving(true);
@@ -91,204 +118,6 @@ function App() {
         setError(cause instanceof Error ? cause.message : 'Geçici klasör seçilemedi.');
     } finally {
       if (generation.current === version) setSaving(false);
-    }
-  }
-  const [committing, setCommitting] = useState(false);
-  const [uncertainCommit, setUncertainCommit] = useState(false);
-  const cancelling = useRef(false);
-  const committingRef = useRef(false);
-  const generation = useRef(0);
-  const resultTarget = useRef<HTMLElement>(null);
-  const pendingResultScroll = useResultScroll(resultTarget, generation, !busy && (!!scan || !!error), [
-    scan,
-    busy,
-    error,
-  ]);
-  function stop() {
-    if (worker.current) {
-      if (videoWorker.current) worker.current.postMessage({ type: 'cancel' });
-      else worker.current.terminate();
-    }
-    worker.current = null;
-    clearTimeout(timer.current);
-  }
-  useEffect(
-    () => () => {
-      stop();
-      revoke();
-    },
-    [],
-  );
-  function clear() {
-    if (committingRef.current) return;
-    cancelling.current = false;
-    generation.current++;
-    pendingResultScroll.current = undefined;
-    setVideoDone(false);
-    setSaving(false);
-    setUncertainCommit(false);
-    stop();
-    revoke();
-    setFile(undefined);
-    setTemporaryDirectory(undefined);
-    setScan(undefined);
-    setOutput(undefined);
-    confirmation.current?.close();
-    operation.current = undefined;
-    setPendingConsent(false);
-    setFootprintResult(undefined);
-    setBusy('');
-    setError('');
-    if (input.current) input.current.value = '';
-  }
-  function cancel() {
-    if (committingRef.current) return;
-    if (videoWorker.current && worker.current && busy) {
-      cancelling.current = true;
-      worker.current.postMessage({ type: 'cancel' });
-      setError('İptal istendi; disk kapanışı bekleniyor.');
-      clearTimeout(timer.current);
-      const active = worker.current;
-      timer.current = setTimeout(() => {
-        if (worker.current !== active || committingRef.current) return;
-        active.terminate();
-        worker.current = null;
-        setBusy('');
-        setError(
-          'İptal kapanışı zaman aşımına uğradı. Disk sonucu belirsiz; hedefi kontrol edin. Geçici site dosyası kalmış olabilir.',
-        );
-      }, 10000);
-    } else {
-      clear();
-      setError('İşlem iptal edildi; kaynak ve çıktı bellekten bırakıldı. Yeniden dosya seçin.');
-    }
-  }
-  function expire(active: Worker) {
-    clearTimeout(timer.current);
-    timer.current = setTimeout(() => {
-      if (worker.current !== active || committingRef.current) return;
-      if (videoWorker.current) {
-        active.postMessage({ type: 'cancel' });
-        cancelling.current = true;
-        setError('Zaman aşımı; disk kapanışı bekleniyor.');
-        timer.current = setTimeout(() => {
-          if (worker.current !== active || committingRef.current) return;
-          active.terminate();
-          worker.current = null;
-          setBusy('');
-          setError('Disk sonucu belirsiz; hedefi ve geçici site dosyalarını kontrol edin.');
-        }, 10000);
-      } else {
-        clear();
-        setError('İşlem zaman aşımına uğradı. Çıktı sunulmadı.');
-      }
-    }, 120000);
-  }
-  function select(files: FileList | null) {
-    if ((videoWorker.current && busy) || committingRef.current || operation.current === 'metadata-consent') return;
-    const list = files ? Array.from(files) : [];
-    clear();
-    if (!list.length) return;
-    if (list.length !== 1) {
-      setError('Bir seferde yalnız bir dosya seçin.');
-      return;
-    }
-    const source = list[0];
-    try {
-      const format = validateSelection(source);
-      const video = format === 'MP4' || format === 'MOV';
-      videoWorker.current = video;
-      if (!supported) throw new Error('Web Workers desteklenmiyor. Güncel bir tarayıcı kullanın.');
-      pendingResultScroll.current = { version: generation.current, interrupted: false };
-      setFile(source);
-      setBusy('scan');
-      const active = video
-        ? new Worker(new URL('./video.worker.ts', import.meta.url), { type: 'module' })
-        : new Worker(new URL('./inspect.worker.ts', import.meta.url), { type: 'module' });
-      worker.current = active;
-      const version = generation.current;
-      active.onmessage = ({ data }: MessageEvent<Response | VideoResponse>) => {
-        if (worker.current !== active || generation.current !== version) return;
-        if (data.type === 'committing') {
-          committingRef.current = true;
-          setCommitting(true);
-          clearTimeout(timer.current);
-          setError('Dosya yayınlanıyor; bu aşama iptal edilemez. Sekmeyi kapatmayın.');
-          timer.current = setTimeout(() => {
-            if (worker.current === active && committingRef.current) {
-              setUncertainCommit(true);
-              setError(
-                'Disk yayınlama hâlâ bekliyor; sonuç belirsiz. Hedef dosyayı kontrol edin. Sekmeyi kapatmak geçici dosya bırakabilir.',
-              );
-            }
-          }, 120000);
-          return;
-        }
-        committingRef.current = false;
-        setCommitting(false);
-        setUncertainCommit(false);
-        cancelling.current = false;
-        clearTimeout(timer.current);
-        operation.current = undefined;
-        setBusy('');
-        if ('cleanupWarning' in data && data.cleanupWarning) setError(data.cleanupWarning);
-        else if (data.type !== 'error') setError('');
-        if (data.type === 'cancelled') {
-          clear();
-          setError(data.cleanupWarning || 'İşlem iptal edildi; disk yazımı tamamlanmadı.');
-          return;
-        }
-        if (data.type === 'scan') {
-          setScan(data.scan);
-        } else if (data.type === 'clean') {
-          revoke();
-          setFootprintResult(undefined);
-          setOutput(data.output);
-        } else if (data.type === 'clean-footprints') {
-          revoke();
-          setFootprintResult(data.footprintResult);
-          const verified =
-            data.footprintResult.status === 'REMOVED_VERIFIED' || data.footprintResult.status === 'PARTIALLY_REMOVED';
-          setOutput(verified && data.output ? { ...data.output, footprintResult: data.footprintResult } : undefined);
-        } else if (data.type === 'video-done') {
-          setVideoRemoved(data.removed);
-          setVideoDone(true);
-        } else if (data.type === 'error') {
-          if (videoWorker.current) {
-            active.terminate();
-            worker.current = null;
-            setScan(undefined);
-            if (input.current) input.current.value = '';
-          }
-          revoke();
-          setOutput(undefined);
-          setFootprintResult(undefined);
-          setError(
-            `${data.message}${'cleanupWarning' in data && data.cleanupWarning ? ` ${data.cleanupWarning}` : ''}`,
-          );
-        }
-      };
-      const workerFailure = (message: string) => {
-        if (worker.current !== active || generation.current !== version) return;
-        const videoFailure = videoWorker.current;
-        committingRef.current = false;
-        setCommitting(false);
-        active.terminate();
-        clear();
-        setError(
-          videoFailure
-            ? `${message} Disk sonucu belirsiz; hedefi kontrol edin. Geçici site dosyası kalmış olabilir.`
-            : `${message} Çıktı sunulmadı.`,
-        );
-      };
-      active.onerror = () => workerFailure('Worker çalıştırılamadı.');
-      active.onmessageerror = () => workerFailure('Worker yanıtı okunamadı.');
-      expire(active);
-      active.postMessage({ type: 'scan', file: source, ...(video ? { format } : {}) });
-    } catch (cause) {
-      stop();
-      setBusy('');
-      setError(cause instanceof Error ? cause.message : 'Dosya seçilemedi.');
     }
   }
   const { eligible, needsConsent, c2paRemovable, imageScan, footprintPlan, allMetadataRemovable } = deriveActions(
@@ -308,26 +137,11 @@ function App() {
       footprintResult
     )
       return;
-    operation.current = 'clean';
-    revoke();
-    setOutput(undefined);
-    setFootprintResult(undefined);
-    setError('');
-    setBusy('clean');
-    expire(worker.current);
-    worker.current.postMessage({ type: 'clean-all-metadata' });
+    job.start({ type: 'clean-all-metadata' });
   }
   function removeC2pa() {
     if (!c2paRemovable || !worker.current || busy || saving || committing || operation.current || output) return;
-    operation.current = 'clean';
-    revoke();
-    setOutput(undefined);
-    setFootprintResult(undefined);
-    setVideoDone(false);
-    setError('');
-    setBusy('clean');
-    expire(worker.current);
-    worker.current.postMessage({ type: 'clean-c2pa', c2paConsent: true });
+    job.start({ type: 'clean-c2pa', c2paConsent: true });
   }
   function requestClean() {
     if (!eligible.length || busy || saving || committing || operation.current || output || videoDone) return;
@@ -357,11 +171,7 @@ function App() {
     const selected = eligible.map(record => record.id);
     const active = worker.current,
       version = generation.current;
-    revoke();
-    setOutput(undefined);
-    setFootprintResult(undefined);
-    setVideoDone(false);
-    setError('');
+    job.resetOutput();
     try {
       if (isVideoFormat(scan.format)) {
         if (!supportsDiskOutput())
@@ -391,13 +201,7 @@ function App() {
   }
   function download() {
     if (!output || !file || busy) return;
-    revoke();
-    const url = URL.createObjectURL(output.blob);
-    downloadURL.current = url;
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = downloadName(file.name, output);
-    link.click();
+    job.downloadBlob(output.blob, downloadName(file.name, output));
   }
   const displayedScan = output?.scan ?? scan;
   const displayedImageScan = displayedScan && 'footprints' in displayedScan ? displayedScan : undefined;
@@ -455,20 +259,7 @@ function App() {
                   </div>
                 )}
                 {uncertainCommit && (
-                  <button
-                    onClick={() => {
-                      worker.current?.terminate();
-                      worker.current = null;
-                      committingRef.current = false;
-                      setCommitting(false);
-                      clear();
-                      setError(
-                        'Disk sonucu belirsiz olarak izleme bırakıldı; bu iptal/geri alma garantisi değildir. Hedefi kontrol edin ve geçici site verilerini temizleyin.',
-                      );
-                    }}
-                  >
-                    Belirsiz sonucu kabul et ve seçimi sıfırla
-                  </button>
+                  <button onClick={job.acceptUncertain}>Belirsiz sonucu kabul et ve seçimi sıfırla</button>
                 )}
                 {!videoWorker.current && file && (
                   <>
