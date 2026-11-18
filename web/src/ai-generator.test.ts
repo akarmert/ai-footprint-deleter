@@ -89,3 +89,14 @@ test('file details show the declared tool for a real C2PA JPEG scan', () => {
   const plain = describeResults(scanImage(jpeg), { name: 'plain.jpg', size: jpeg.length }).fields.find(f => f.id === 'ai-tool')!
   assert.equal(plain.ai, false); assert.match(plain.value, /^Dosyada belirtilmemiş/)
 })
+
+test('real-world shapes: OpenAI (ChatGPT agent + vendor generator) and Google (library generator only)', () => {
+  const openai = detectAiTools({ records: [], provenance: report(manifest(['OpenAI Media Service API'], [{ sourceType: AI, software: 'ChatGPT' }, { action: 'c2pa.converted' }], [AI])) })
+  assert.deepEqual(openai.claims.map(c => [c.tool, c.source]), [['OpenAI ChatGPT', 'c2pa-action']])
+  assert.equal(describeAiTools(openai).headline, 'OpenAI ChatGPT')
+  const google = detectAiTools({ records: [], provenance: report(manifest(['Google C2PA Core Generator Library'], [{ sourceType: AI }, { action: 'c2pa.edited', sourceType: AI }], [AI])) })
+  assert.deepEqual(google.claims.map(c => [c.tool, c.raw, c.declared]), [['Google AI (Gemini / Imagen)', 'Google C2PA Core Generator Library', true]])
+  // A Google-written manifest that only declares an AI-edited composite (e.g. a phone edit) is not attributed to Gemini.
+  const composite = detectAiTools({ records: [], provenance: report(manifest(['Google C2PA Core Generator Library'], [{ action: 'c2pa.edited', sourceType: 'http://cv.iptc.org/newscodes/digitalsourcetype/compositeWithTrainedAlgorithmicMedia' }], ['http://cv.iptc.org/newscodes/digitalsourcetype/compositeWithTrainedAlgorithmicMedia'])) })
+  assert.deepEqual(composite.claims.map(c => c.tool), ['Google C2PA Core Generator Library'])
+})

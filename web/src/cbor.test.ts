@@ -14,3 +14,10 @@ test('CBOR enforces depth, size and time budget callbacks', () => {
   assert.throws(() => decode([0x5a, 0, 16, 0, 0]));
   assert.throws(() => decodeCbor(new Uint8Array([0]), () => { throw new Error('deadline'); }), /deadline/);
 });
+test('CBOR accepts only date/time tags 0 (text) and 1 (epoch) and drops the tag', () => {
+  // tag 0 "2025" (RFC 3339 text, as in OpenAI C2PA action "when"), tag 1 epoch 100
+  assert.equal(decode([0xc0, 0x64, 0x32, 0x30, 0x32, 0x35]), '2025');
+  assert.equal(decode([0xc1, 0x18, 100]), 100);
+  assert.deepEqual(decode([0xa1, 0x64, 0x77, 0x68, 0x65, 0x6e, 0xc0, 0x61, 0x78]), new Map([['when', 'x']]));
+  for (const bytes of [[0xc0, 0x01], [0xc1, 0x61, 0x78], [0xd8, 18, 0x80], [0xc2, 0x41, 0x01], [0xd8, 32, 0x61, 0x78], [0xc0]]) assert.throws(() => decode(bytes), String(bytes));
+});

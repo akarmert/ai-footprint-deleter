@@ -45,6 +45,12 @@ const KNOWN_TOOLS: { name: string; pattern: RegExp }[] = [
   { name: 'AUTOMATIC1111', pattern: /\bautomatic1111\b/i },
 ]
 
+// Vendors whose claim generator does not name the product. Used only when the same manifest
+// declares trainedAlgorithmicMedia, so a vendor's camera or editor is never reported as an AI tool.
+const DECLARED_VENDORS: { name: string; pattern: RegExp }[] = [
+  { name: 'Google AI (Gemini / Imagen)', pattern: /\bgoogle\b/i },
+]
+
 // Generator-specific parameter formats that identify the tool without naming it.
 const PARAMETER_FORMATS: { name: string; pattern: RegExp }[] = [
   { name: 'Stable Diffusion (AUTOMATIC1111/Forge parametreleri)', pattern: /\bSteps:\s*\d+,\s*Sampler:/ },
@@ -85,8 +91,12 @@ export function detectAiTools(scan: ScanLike): AiToolSummary {
     // 3. The claim generator: the app that wrote the record. Used when it is a known AI tool,
     //    or as the only available name when the manifest declares AI without naming a tool.
     const namedByAction = aiActions.some(action => action.software?.trim())
+    const generated = manifest.aiSources.some(source => /trainedAlgorithmicMedia$/.test(source)) || aiActions.some(action => /\/trainedAlgorithmicMedia$/.test(action.sourceType ?? ''))
     for (const generator of manifest.claimGenerator) {
-      const raw = clean(generator), known = knownAiTool(raw)
+      const raw = clean(generator)
+      const known = knownAiTool(raw) ?? (generated && !namedByAction ? DECLARED_VENDORS.find(vendor => vendor.pattern.test(raw))?.name : undefined)
+      // Skip a vendor name already covered by a more specific tool (OpenAI vs OpenAI ChatGPT).
+      if (known && claims.some(c => c.tool !== known && (c.tool.startsWith(known) || known.startsWith(c.tool)))) continue
       if (known) add({ tool: known, raw, source: 'c2pa-claim-generator', declared: manifestDeclared })
       else if (manifestDeclared && !namedByAction && raw) add({ tool: raw, raw, source: 'c2pa-claim-generator', declared: true })
     }
