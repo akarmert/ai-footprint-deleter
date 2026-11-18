@@ -7,6 +7,7 @@ import { scanImage, cleanImage, cleanC2pa } from './engine.ts';
 import { readC2pa } from './c2pa.ts';
 import { validateSelection } from './media.ts';
 import type { Request, Response } from './protocol.ts';
+import type { CleaningMode } from './engine.ts';
 
 function imageWorker() {
   const source = readFileSync(new URL('./inspect.worker.ts', import.meta.url), 'utf8');
@@ -24,11 +25,13 @@ test('image Worker requires explicit valid mode and returns verified mode', asyn
   const file = new File([readFileSync(new URL('../tests/fixtures/image-1.jpg', import.meta.url))], 'image.jpg');
   await self.onmessage({ data: { type: 'scan', file } });
   for (const mode of [undefined, 'invalid', null]) {
-    await self.onmessage({ data: { type: 'clean', ids: [], rightsConsent: true, mode } });
-    assert.equal(messages.at(-1).type, 'error');
+    await self.onmessage({ data: { type: 'clean', ids: [], rightsConsent: true, mode: mode as unknown as CleaningMode } }); // deliberately invalid
+    assert.equal(messages.at(-1)?.type, 'error');
   }
   await self.onmessage({ data: { type: 'clean', ids: [], rightsConsent: true, mode: 'comprehensive' } });
-  assert.equal(messages.at(-1).output.mode, 'comprehensive');
+  const last = messages.at(-1);
+  assert.ok(last?.type === 'clean');
+  assert.equal(last.output.mode, 'comprehensive');
 });
 test('image Worker rejects missing and non-boolean C2PA consent without producing output', async () => {
   const { self, messages } = imageWorker();

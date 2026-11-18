@@ -45,7 +45,7 @@ const fixture = (options: { front?: boolean; co64?: boolean; extra?: Uint8Array;
 const clean = async (file: Blob, format: 'MP4' | 'MOV' = 'MP4') => {
   const scan = await scanVideo(file, format), chunks: Uint8Array[] = []
   for await (const chunk of videoChunks(file, scan, scan.records.map(r => r.id), true)) chunks.push(chunk)
-  const output = new Blob(chunks)
+  const output = new Blob(chunks as BlobPart[])
   return { scan, output, result: await verifyVideo(file, output, scan, scan.records.map(r => r.id), true) }
 }
 const mutate = async (file: Blob, type: string, offset: number, value: number) => {
@@ -81,7 +81,7 @@ test('rights consent, duplicate IDs, stale scans and unknown selections fail clo
   const chunks: Uint8Array[] = []
   const ids = scan.records.filter(r => !r.requiresRightsConsent).map(r => r.id)
   for await (const c of videoChunks(file, scan, ids, false)) chunks.push(c)
-  const result = await verifyVideo(file, new Blob(chunks), scan, ids, false)
+  const result = await verifyVideo(file, new Blob(chunks as BlobPart[]), scan, ids, false)
   assert.deepEqual(result.records, [tag])
 })
 for (const extra of [box('uuid', new Uint8Array(16)), box('moof'), box('pssh'), box('mvex'), box('zzzz'), box('free', str('hidden'))]) test(`unsafe box ${four(extra)} blocks all cleaning`, async () => {

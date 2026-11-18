@@ -8,15 +8,16 @@ Güncel durum ve açık işler: `docs/history/GELISTIRME_DEVIR_OZETI_2026-11-18.
 
 ```bash
 npm ci
-npm test        # Node test runner; video testleri PATH'te ffmpeg (libx264) ister
+npm test        # Node test runner (src/**/*.test.ts + server.test.mjs); video testleri PATH'te ffmpeg (libx264) ister
+npm run typecheck:tests  # testleri de tip denetiminden geçirir (tsconfig.test.json, @types/node)
 npm run build   # tsc --noEmit && vite build
 npm start       # dist'i http://localhost:3000 üzerinde sunar
 ```
 
-- `npm test` içindeki test listesi elle yazılıdır: yeni `*.test.ts` dosyasını `package.json`'a da ekle.
-- `tsconfig.json` testleri tip denetiminden hariç tutar; build testleri kontrol etmez.
+- `npm test` `src/**/*.test.ts` glob'unu kullanır; yeni test dosyası otomatik çalışır.
+- `tsconfig.json` (build) testleri ve Node tiplerini hariç tutar; testler `tsconfig.test.json` ile ayrıca denetlenir (CI'da `npm run typecheck:tests`).
 - `web/tests/*-acceptance.js` ve `footprints-fixtures.mjs` `npm test` ile çalışmaz; yollar ortam değişkenleriyle verilir (`AFC_FIXTURES_DIR`, `AFC_VIDEO_FIXTURE`, `AFC_SCREENSHOT_DIR`, `AFC_FIXTURE_CACHE_PARENT`, `AFC_PYTHON`; ayrıntı `web/README.md`).
-- CI: `.github/workflows/web-ci.yml` (Node 24, ffmpeg, `npm ci` / `npm test` / `npm run build`). CI yeşil olmadan birleştirme.
+- CI: `.github/workflows/web-ci.yml` (Node 24, ffmpeg, `npm ci` / `npm run typecheck:tests` / `npm test` / `npm run build`). CI yeşil olmadan birleştirme.
 
 ## Değişmez kurallar
 

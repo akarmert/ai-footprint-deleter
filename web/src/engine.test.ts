@@ -335,7 +335,7 @@ test('data after EOI is rejected unless an MPF index describes it exactly', () =
     concat(mpfFile(primary, [gain]), new Uint8Array([0])),
     mpfFile(primary, [concat(new Uint8Array([0, 0]), gain.subarray(2))]),
   ]
-  bad.forEach((data, i) => assert.throws(() => scanImage(data), undefined, `case ${i}`))
+  bad.forEach((data, i) => assert.throws(() => scanImage(data), Error, `case ${i}`))
 })
 test('MPF segment without described images blocks cleaning and C2PA removal', async () => {
   const data = jpgInsert(jpgInsert(fixture('image-1.jpg'), 235, app11(c2paStore())), 226, mpfPayload(false, [10, 10], [0, 10]))
