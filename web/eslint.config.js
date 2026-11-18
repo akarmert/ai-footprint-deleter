@@ -26,6 +26,11 @@ export default tseslint.config(
     },
   },
   {
+    // Playwright tests and config run in Node.
+    files: ['tests/e2e/**/*.ts', 'playwright.config.ts'],
+    languageOptions: { globals: { ...globals.node } },
+  },
+  {
     files: ['src/**/*.test.ts'],
     languageOptions: { globals: { ...globals.node } },
     rules: { '@typescript-eslint/no-explicit-any': 'off', '@typescript-eslint/no-non-null-assertion': 'off' },
