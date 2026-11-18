@@ -1,0 +1,8 @@
+dist
+node_modules
+tests/fixtures
+package-lock.json
+*.tsbuildinfo
+*.md
+# Playwright browser_run_code inputs must stay a bare function expression (no trailing semicolon).
+tests/*-acceptance.js

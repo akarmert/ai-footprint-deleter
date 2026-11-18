@@ -33,6 +33,8 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
 
       - run: npm ci
+      - run: npm run lint
+      - run: npm run format:check
       - run: npm run typecheck:tests
       - run: npm test
       - run: npm run build

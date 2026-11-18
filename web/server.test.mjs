@@ -15,7 +15,9 @@ function send(url, method = 'GET', headers = {}) {
     const req = request({ host: '127.0.0.1', port, path: url, method, headers }, res => {
       const chunks = [];
       res.on('data', chunk => chunks.push(chunk));
-      res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, body: Buffer.concat(chunks).toString() }));
+      res.on('end', () =>
+        resolve({ status: res.statusCode, headers: res.headers, body: Buffer.concat(chunks).toString() }),
+      );
     });
     req.on('error', reject);
     req.end();
@@ -69,7 +71,13 @@ test('root and extensionless SPA navigation serve the entry point', async () => 
 });
 
 test('assets have actual MIME types and HEAD preserves metadata without body', async () => {
-  for (const [file, mime] of [['worker.js', 'text/javascript'], ['style.css', 'text/css'], ['image.webp', 'image/webp'], ['module.wasm', 'application/wasm'], ['unknown.bin', 'application/octet-stream']]) {
+  for (const [file, mime] of [
+    ['worker.js', 'text/javascript'],
+    ['style.css', 'text/css'],
+    ['image.webp', 'image/webp'],
+    ['module.wasm', 'application/wasm'],
+    ['unknown.bin', 'application/octet-stream'],
+  ]) {
     const get = await send(`/assets/${file}`);
     const head = await send(`/assets/${file}`, 'HEAD');
     assert.equal(get.status, 200);
@@ -95,7 +103,17 @@ test('security headers prohibit network connections and permit same-origin worke
 });
 
 test('missing assets, upload routes and private paths never return the SPA', async () => {
-  for (const route of ['/missing.js', '/assets/missing', '/api/process', '/upload', '/uploads/file', '/.env', '/%2e%2e/secret.txt', '/assets/../../secret.txt', '/assets/%2e%2e/%2e%2e/secret.txt']) {
+  for (const route of [
+    '/missing.js',
+    '/assets/missing',
+    '/api/process',
+    '/upload',
+    '/uploads/file',
+    '/.env',
+    '/%2e%2e/secret.txt',
+    '/assets/../../secret.txt',
+    '/assets/%2e%2e/%2e%2e/secret.txt',
+  ]) {
     const result = await send(route);
     assert.equal(result.status, 404, route);
     assert.equal(result.body, 'Not found\n');
@@ -120,12 +138,21 @@ test('all unsupported methods are rejected', async () => {
 
 test('rejects uploads before their declared body arrives', async () => {
   await new Promise((resolve, reject) => {
-    const req = request({ host: '127.0.0.1', port, path: '/upload', method: 'POST', headers: { 'Content-Length': '1000000000' } }, res => {
-      assert.equal(res.statusCode, 405);
-      res.resume();
-      res.on('end', () => { req.destroy(); resolve(); });
+    const req = request(
+      { host: '127.0.0.1', port, path: '/upload', method: 'POST', headers: { 'Content-Length': '1000000000' } },
+      res => {
+        assert.equal(res.statusCode, 405);
+        res.resume();
+        res.on('end', () => {
+          req.destroy();
+          resolve();
+        });
+      },
+    );
+    req.setTimeout(2000, () => {
+      req.destroy();
+      reject(new Error('Server waited for upload body'));
     });
-    req.setTimeout(2000, () => { req.destroy(); reject(new Error('Server waited for upload body')); });
     req.on('error', reject);
     req.flushHeaders();
   });

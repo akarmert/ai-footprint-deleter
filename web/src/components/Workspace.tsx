@@ -5,65 +5,480 @@ import { Icon } from './Home';
 import type { FootprintReport, FootprintPlan, FootprintResult } from '../footprints';
 import { describeAiTools, detectAiTools } from '../ai-generator';
 
-export const footprintStatuses = { REMOVED_VERIFIED: 'Desteklenen kaynak kayıtları kaldırıldı', PARTIALLY_REMOVED: 'Bazı kayıtlar kaldırıldı, bazıları korundu', BLOCKED: 'Kaynak kayıtları güvenle kaldırılamıyor', NOTHING_TO_REMOVE: 'Kaldırılacak kayıt yok', VERIFICATION_FAILED: 'Temizleme doğrulanamadı' };
+export const footprintStatuses = {
+  REMOVED_VERIFIED: 'Desteklenen kaynak kayıtları kaldırıldı',
+  PARTIALLY_REMOVED: 'Bazı kayıtlar kaldırıldı, bazıları korundu',
+  BLOCKED: 'Kaynak kayıtları güvenle kaldırılamıyor',
+  NOTHING_TO_REMOVE: 'Kaldırılacak kayıt yok',
+  VERIFICATION_FAILED: 'Temizleme doğrulanamadı',
+};
 export function footprintReason(result: FootprintResult) {
   const reasons: Record<string, string> = {
     'Invalid consent': 'İzin bilgileri geçerli olmadığı için işlem yapılmadı.',
-    'Safety blocker or required separate consent missing': 'Güvenlik engeli veya eksik ayrı izin nedeniyle işlem yapılmadı.',
+    'Safety blocker or required separate consent missing':
+      'Güvenlik engeli veya eksik ayrı izin nedeniyle işlem yapılmadı.',
     'No safely removable footprint blocks': 'Güvenle kaldırılabilecek kaynak kaydı bulunamadı.',
-    'All performed stages verified; retained limitations remain explicit': 'Uygulanan kaldırma adımları doğrulandı. Korunan kayıtlar ve inceleme sınırları devam eder.',
+    'All performed stages verified; retained limitations remain explicit':
+      'Uygulanan kaldırma adımları doğrulandı. Korunan kayıtlar ve inceleme sınırları devam eder.',
     'Atomic operation failed; no output released': 'İşlem doğrulanamadı; ara dosyalar dahil hiçbir çıktı sunulmadı.',
   };
-  return reasons[result.reason] ?? (result.status === 'VERIFICATION_FAILED' ? 'İşlem doğrulanamadığı için çıktı sunulmadı.' : footprintStatuses[result.status]);
+  return (
+    reasons[result.reason] ??
+    (result.status === 'VERIFICATION_FAILED'
+      ? 'İşlem doğrulanamadığı için çıktı sunulmadı.'
+      : footprintStatuses[result.status])
+  );
 }
 
-export function FootprintSummary({ report, plan, result, scanning, failed }: { report?: FootprintReport; plan?: FootprintPlan; result?: FootprintResult; scanning?: boolean; failed?: boolean }) {
+export function FootprintSummary({
+  report,
+  plan,
+  result,
+  scanning,
+  failed,
+}: {
+  report?: FootprintReport;
+  plan?: FootprintPlan;
+  result?: FootprintResult;
+  scanning?: boolean;
+  failed?: boolean;
+}) {
   const current = result?.after ?? report;
-  const state = failed || current?.incomplete && (current.state === 'NO_RECORDS' || current.state === 'PROVENANCE_ONLY' && plan?.blocked) ? 'INCOMPLETE' : current?.state;
-  const headings = { AI_DECLARATION: 'AI METADATA BULUNDU', METADATA_HINTS: 'AI METADATA BULUNDU', PROVENANCE_ONLY: 'AI METADATA BULUNDU', NO_RECORDS: 'AI METADATA BULUNAMADI', INCOMPLETE: 'METADATA BULUNDU' };
+  const state =
+    failed ||
+    (current?.incomplete && (current.state === 'NO_RECORDS' || (current.state === 'PROVENANCE_ONLY' && plan?.blocked)))
+      ? 'INCOMPLETE'
+      : current?.state;
+  const headings = {
+    AI_DECLARATION: 'AI METADATA BULUNDU',
+    METADATA_HINTS: 'AI METADATA BULUNDU',
+    PROVENANCE_ONLY: 'AI METADATA BULUNDU',
+    NO_RECORDS: 'AI METADATA BULUNAMADI',
+    INCOMPLETE: 'METADATA BULUNDU',
+  };
   // A scan that produced no report at all is a failure, not found-but-incomplete metadata.
   const failedHeading = failed && !current ? 'METADATA ANALİZİ TAMAMLANAMADI' : undefined;
-  const descriptions = { AI_DECLARATION: 'Metadata içinde açık AI üretim beyanı bulundu; bu beyan doğrulanmamıştır.', METADATA_HINTS: 'Araç veya üretim parametresi ipuçları bulundu; bunlar AI üretiminin kesin kanıtı değildir.', PROVENANCE_ONLY: 'C2PA kaynak kaydı bulundu; bu kayıt tek başına AI üretimi anlamına gelmez.', NO_RECORDS: 'İncelenebilen metadata alanlarında AI kaynak kaydı tespit edilmedi.', INCOMPLETE: 'Bazı metadata alanları okunamadı veya güvenilir biçimde değerlendirilemedi.' };
-  const pending = scanning || !current && !failed;
+  const descriptions = {
+    AI_DECLARATION: 'Metadata içinde açık AI üretim beyanı bulundu; bu beyan doğrulanmamıştır.',
+    METADATA_HINTS: 'Araç veya üretim parametresi ipuçları bulundu; bunlar AI üretiminin kesin kanıtı değildir.',
+    PROVENANCE_ONLY: 'C2PA kaynak kaydı bulundu; bu kayıt tek başına AI üretimi anlamına gelmez.',
+    NO_RECORDS: 'İncelenebilen metadata alanlarında AI kaynak kaydı tespit edilmedi.',
+    INCOMPLETE: 'Bazı metadata alanları okunamadı veya güvenilir biçimde değerlendirilemedi.',
+  };
+  const pending = scanning || (!current && !failed);
   const tone = pending ? 'pending' : result ? 'processed' : state === 'NO_RECORDS' ? 'clear' : 'detected';
-  return <section className={`footprint-summary ${tone}`} aria-labelledby="footprint-title" aria-live="polite" aria-atomic="true" aria-busy={!!scanning}>
-    <h3 id="footprint-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d={tone === 'clear' ? 'm8 12 3 3 5-6' : 'M12 7v6 M12 17h.01'} /></svg><span>{pending ? 'Metadata analiz ediliyor…' : result ? footprintStatuses[result.status] : failedHeading ?? (state ? headings[state] : undefined) ?? headings.INCOMPLETE}</span></h3>
-    {!pending && <p>{result ? footprintReason(result) : state ? descriptions[state] : 'Dosya okunamadı; başka bir dosya seçerek tekrar deneyebilirsin.'}</p>}
-    {!pending && current && <ul className="footprint-counts" aria-label={result?.after ? 'Kalan kayıtlar' : 'Bulunan kayıtlar'}>{([['explicit-ai', 'AI beyanı · Doğrulanmamış'], ['metadata-hint', 'metadata ipucu'], ['provenance', 'C2PA kaydı']] as const).map(([category, label]) => {
-      const count = current.evidence.filter(item => item.category === category).length;
-      return count > 0 ? <li key={category}><strong>{count}</strong> {label}{result?.after ? ' kaldı' : ''}</li> : null;
-    })}</ul>}
-    {!pending && !result && (current?.incomplete && state !== 'INCOMPLETE' || plan?.blocked || !!plan?.unsupported.length) && <p className="scan-note">{current?.incomplete ? 'Analiz kısmi. ' : ''}{plan?.blocked ? 'Güvenli kaldırma desteklenmiyor. ' : ''}Korunan kayıtlar teknik ayrıntılarda.</p>}
-  </section>;
+  return (
+    <section
+      className={`footprint-summary ${tone}`}
+      aria-labelledby="footprint-title"
+      aria-live="polite"
+      aria-atomic="true"
+      aria-busy={!!scanning}
+    >
+      <h3 id="footprint-title">
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <circle cx="12" cy="12" r="9" />
+          <path d={tone === 'clear' ? 'm8 12 3 3 5-6' : 'M12 7v6 M12 17h.01'} />
+        </svg>
+        <span>
+          {pending
+            ? 'Metadata analiz ediliyor…'
+            : result
+              ? footprintStatuses[result.status]
+              : (failedHeading ?? (state ? headings[state] : undefined) ?? headings.INCOMPLETE)}
+        </span>
+      </h3>
+      {!pending && (
+        <p>
+          {result
+            ? footprintReason(result)
+            : state
+              ? descriptions[state]
+              : 'Dosya okunamadı; başka bir dosya seçerek tekrar deneyebilirsin.'}
+        </p>
+      )}
+      {!pending && current && (
+        <ul className="footprint-counts" aria-label={result?.after ? 'Kalan kayıtlar' : 'Bulunan kayıtlar'}>
+          {(
+            [
+              ['explicit-ai', 'AI beyanı · Doğrulanmamış'],
+              ['metadata-hint', 'metadata ipucu'],
+              ['provenance', 'C2PA kaydı'],
+            ] as const
+          ).map(([category, label]) => {
+            const count = current.evidence.filter(item => item.category === category).length;
+            return count > 0 ? (
+              <li key={category}>
+                <strong>{count}</strong> {label}
+                {result?.after ? ' kaldı' : ''}
+              </li>
+            ) : null;
+          })}
+        </ul>
+      )}
+      {!pending &&
+        !result &&
+        ((current?.incomplete && state !== 'INCOMPLETE') || plan?.blocked || !!plan?.unsupported.length) && (
+          <p className="scan-note">
+            {current?.incomplete ? 'Analiz kısmi. ' : ''}
+            {plan?.blocked ? 'Güvenli kaldırma desteklenmiyor. ' : ''}Korunan kayıtlar teknik ayrıntılarda.
+          </p>
+        )}
+    </section>
+  );
 }
 
 export function FootprintDetails({ report, plan }: { report?: FootprintReport; plan?: FootprintPlan }) {
-  return <section aria-label="Analiz kapsamı ve sınırları"><h3>Analiz kapsamı ve sınırları</h3><p>AI beyanları doğrulanmamıştır; ipuçları AI üretiminin kanıtı değildir. C2PA kaydı tek başına AI üretimi anlamına gelmez.</p><p>Yalnız incelenebilen üst düzey metadata kapsanır. Piksel, görünmez filigran, iç içe metadata veya harici kayıtlar incelenmez; kayıt bulunmaması tüm AI izlerinin yokluğu garantisi değildir. C2PA imzaları doğrulanmaz.</p>{report?.incomplete && <p>Bazı metadata alanları tam incelenemedi.</p>}{plan?.reasons.map(reason => <p key={reason}>{reason}</p>)}<p>Remove, desteklenen gömülü C2PA kaynak kayıtlarını ve güvenle ayrılabilen AI metadata'sını kaldırır. Kaynak dosya korunur.</p><p>Ayrı hak/telif izni gerektiren bağımsız metadata kayıtları korunur. Bu kayıtlar için Teknik Ayrıntılar ve Gelişmiş Araçlar bölümündeki onaylı metadata temizliğini kullanabilirsin.</p></section>;
+  return (
+    <section aria-label="Analiz kapsamı ve sınırları">
+      <h3>Analiz kapsamı ve sınırları</h3>
+      <p>
+        AI beyanları doğrulanmamıştır; ipuçları AI üretiminin kanıtı değildir. C2PA kaydı tek başına AI üretimi anlamına
+        gelmez.
+      </p>
+      <p>
+        Yalnız incelenebilen üst düzey metadata kapsanır. Piksel, görünmez filigran, iç içe metadata veya harici
+        kayıtlar incelenmez; kayıt bulunmaması tüm AI izlerinin yokluğu garantisi değildir. C2PA imzaları doğrulanmaz.
+      </p>
+      {report?.incomplete && <p>Bazı metadata alanları tam incelenemedi.</p>}
+      {plan?.reasons.map(reason => (
+        <p key={reason}>{reason}</p>
+      ))}
+      <p>
+        Remove, desteklenen gömülü C2PA kaynak kayıtlarını ve güvenle ayrılabilen AI metadata'sını kaldırır. Kaynak
+        dosya korunur.
+      </p>
+      <p>
+        Ayrı hak/telif izni gerektiren bağımsız metadata kayıtları korunur. Bu kayıtlar için Teknik Ayrıntılar ve
+        Gelişmiş Araçlar bölümündeki onaylı metadata temizliğini kullanabilirsin.
+      </p>
+    </section>
+  );
 }
 
-export function FileDropzone({ input, dragging, disabled, setDragging, select }: { input: RefObject<HTMLInputElement | null>; dragging: boolean; disabled: boolean; setDragging: (value: boolean) => void; select: (files: FileList | null) => void }) {
-  return <section className={`dropzone ${dragging ? 'dragging' : ''}`} aria-labelledby="source-title" onDragOver={event => { event.preventDefault(); if (!disabled) setDragging(true); }} onDragLeave={() => setDragging(false)} onDrop={event => { event.preventDefault(); setDragging(false); if (!disabled) select(event.dataTransfer.files); }}><div className="upload-icon"><Icon kind="file" /></div><h2 id="source-title">Görsel veya videonu buraya bırak</h2><input ref={input} id="media" type="file" accept=".jpg,.jpeg,.png,.webp,.mp4,.mov" aria-label="Analiz edilecek dosya" onChange={event => select(event.target.files)} disabled={disabled} /><button className="primary" onClick={() => input.current?.click()} disabled={disabled}>Dosya Seç</button><p className="formats">JPEG · PNG · WebP · MP4 · MOV</p><div className="limits"><span>Görsel: 128 MiB</span><span>Video: 1.000.000.000 bayt</span></div><p className="privacy-note"><Icon /> Dosyalar sunucuya yüklenmez</p></section>;
+export function FileDropzone({
+  input,
+  dragging,
+  disabled,
+  setDragging,
+  select,
+}: {
+  input: RefObject<HTMLInputElement | null>;
+  dragging: boolean;
+  disabled: boolean;
+  setDragging: (value: boolean) => void;
+  select: (files: FileList | null) => void;
+}) {
+  return (
+    <section
+      className={`dropzone ${dragging ? 'dragging' : ''}`}
+      aria-labelledby="source-title"
+      onDragOver={event => {
+        event.preventDefault();
+        if (!disabled) setDragging(true);
+      }}
+      onDragLeave={() => setDragging(false)}
+      onDrop={event => {
+        event.preventDefault();
+        setDragging(false);
+        if (!disabled) select(event.dataTransfer.files);
+      }}
+    >
+      <div className="upload-icon">
+        <Icon kind="file" />
+      </div>
+      <h2 id="source-title">Görsel veya videonu buraya bırak</h2>
+      <input
+        ref={input}
+        id="media"
+        type="file"
+        accept=".jpg,.jpeg,.png,.webp,.mp4,.mov"
+        aria-label="Analiz edilecek dosya"
+        onChange={event => select(event.target.files)}
+        disabled={disabled}
+      />
+      <button className="primary" onClick={() => input.current?.click()} disabled={disabled}>
+        Dosya Seç
+      </button>
+      <p className="formats">JPEG · PNG · WebP · MP4 · MOV</p>
+      <div className="limits">
+        <span>Görsel: 128 MiB</span>
+        <span>Video: 1.000.000.000 bayt</span>
+      </div>
+      <p className="privacy-note">
+        <Icon /> Dosyalar sunucuya yüklenmez
+      </p>
+    </section>
+  );
 }
 export function FileDetails({ file, scan }: { file: File; scan?: MediaScan }) {
   const tools = scan ? describeAiTools(detectAiTools(scan)) : undefined;
-  return <section className="panel file-details" aria-label="Dosya bilgileri"><div className="file-icon"><Icon kind="file" /></div><div><p className="eyebrow">SEÇİLİ DOSYA</p><h2 className="filename">{file.name}</h2><p>{file.size.toLocaleString('tr-TR')} bayt <span aria-hidden="true">·</span> {scan?.format ?? 'Format doğrulanıyor'}</p>{tools && <p className={`ai-tool ${tools.found ? 'found' : ''}`} title={tools.detail}>AI aracı: <strong>{tools.headline}</strong>{tools.found && <span className="ai-tool-note"> · dosyadaki beyan, doğrulanmamış</span>}</p>}</div><span className="chip">Kaynak korunur</span></section>;
+  return (
+    <section className="panel file-details" aria-label="Dosya bilgileri">
+      <div className="file-icon">
+        <Icon kind="file" />
+      </div>
+      <div>
+        <p className="eyebrow">SEÇİLİ DOSYA</p>
+        <h2 className="filename">{file.name}</h2>
+        <p>
+          {file.size.toLocaleString('tr-TR')} bayt <span aria-hidden="true">·</span>{' '}
+          {scan?.format ?? 'Format doğrulanıyor'}
+        </p>
+        {tools && (
+          <p className={`ai-tool ${tools.found ? 'found' : ''}`} title={tools.detail}>
+            AI aracı: <strong>{tools.headline}</strong>
+            {tools.found && <span className="ai-tool-note"> · dosyadaki beyan, doğrulanmamış</span>}
+          </p>
+        )}
+      </div>
+      <span className="chip">Kaynak korunur</span>
+    </section>
+  );
 }
-export function CleaningModeSelector({ mode, disabled, changeMode, video }: { mode: CleaningMode; disabled: boolean; changeMode: (mode: CleaningMode) => void; video: boolean }) {
-  return <section aria-labelledby="mode-title" className="cleaning-options"><h3 id="mode-title">Temizleme seçenekleri</h3><div className="mode-selector" role="group" aria-label="Temizleme modu"><button type="button" className={`mode ${mode === 'safe' ? 'active' : ''}`} aria-label="Güvenli Mod (Önerilen)" aria-pressed={mode === 'safe'} disabled={disabled} onClick={() => changeMode('safe')}><span className="mode-title">Güvenli Mod <span className="chip">Önerilen</span></span><span className="mode-description">ICC renk profili ve görüntü yönü korunur.</span></button><button type="button" className={`mode ${mode === 'comprehensive' ? 'active' : ''}`} aria-label="Kapsamlı Temizlik" aria-pressed={mode === 'comprehensive'} disabled={disabled} onClick={() => changeMode('comprehensive')}><span className="mode-title">Kapsamlı Temizlik</span><span className="mode-description">Desteklenen ek JPEG/WebP ICC ve uygun JPEG JFIF kayıtları kaldırılabilir.</span></button></div>{mode === 'comprehensive' && <p className="warning">ICC kaldırılması renk yönetimini ve görünümü etkileyebilir. PNG ICC korunur. Tüm AI izleri veya görünmez filigranlar silinmez.</p>}{video && <p className="scan-note">Video her iki modda da mevcut güvenli politikayı kullanır.</p>}</section>;
+export function CleaningModeSelector({
+  mode,
+  disabled,
+  changeMode,
+  video,
+}: {
+  mode: CleaningMode;
+  disabled: boolean;
+  changeMode: (mode: CleaningMode) => void;
+  video: boolean;
+}) {
+  return (
+    <section aria-labelledby="mode-title" className="cleaning-options">
+      <h3 id="mode-title">Temizleme seçenekleri</h3>
+      <div className="mode-selector" role="group" aria-label="Temizleme modu">
+        <button
+          type="button"
+          className={`mode ${mode === 'safe' ? 'active' : ''}`}
+          aria-label="Güvenli Mod (Önerilen)"
+          aria-pressed={mode === 'safe'}
+          disabled={disabled}
+          onClick={() => changeMode('safe')}
+        >
+          <span className="mode-title">
+            Güvenli Mod <span className="chip">Önerilen</span>
+          </span>
+          <span className="mode-description">ICC renk profili ve görüntü yönü korunur.</span>
+        </button>
+        <button
+          type="button"
+          className={`mode ${mode === 'comprehensive' ? 'active' : ''}`}
+          aria-label="Kapsamlı Temizlik"
+          aria-pressed={mode === 'comprehensive'}
+          disabled={disabled}
+          onClick={() => changeMode('comprehensive')}
+        >
+          <span className="mode-title">Kapsamlı Temizlik</span>
+          <span className="mode-description">
+            Desteklenen ek JPEG/WebP ICC ve uygun JPEG JFIF kayıtları kaldırılabilir.
+          </span>
+        </button>
+      </div>
+      {mode === 'comprehensive' && (
+        <p className="warning">
+          ICC kaldırılması renk yönetimini ve görünümü etkileyebilir. PNG ICC korunur. Tüm AI izleri veya görünmez
+          filigranlar silinmez.
+        </p>
+      )}
+      {video && <p className="scan-note">Video her iki modda da mevcut güvenli politikayı kullanır.</p>}
+    </section>
+  );
 }
-export function ScanStatus({ busy, committing, done, output, scan, error, footprintResult }: { busy: '' | 'scan' | 'clean'; committing: boolean; done: boolean; output?: VerifiedOutput; scan?: MediaScan; error: string; footprintResult?: FootprintResult }) {
+export function ScanStatus({
+  busy,
+  committing,
+  done,
+  output,
+  scan,
+  error,
+  footprintResult,
+}: {
+  busy: '' | 'scan' | 'clean';
+  committing: boolean;
+  done: boolean;
+  output?: VerifiedOutput;
+  scan?: MediaScan;
+  error: string;
+  footprintResult?: FootprintResult;
+}) {
   const failed = footprintResult?.status === 'VERIFICATION_FAILED' || footprintResult?.status === 'BLOCKED';
-  const decisionReasons: Record<string, string> = { SUPPORTED_EMBEDDED: 'Desteklenen gömülü kaynak kaydı Remove ile kaldırılabilir.', SUPPORTED_WITH_LOCAL_XMP_REFERENCE: 'Gömülü kaynak kaydı ve ona bağlı yerel işaretçi Remove ile kaldırılabilir.', BLOCKED_EXTERNAL_REFERENCE: 'Harici kaynak bağlantısı otomatik değiştirilmez.', BLOCKED_AMBIGUOUS_PROVENANCE: 'Kaynak bilgisi belirsiz olduğu için kayıtlar korunur.', BLOCKED_UNSUPPORTED_STRUCTURE: 'Kaynak kaydının yapısı güvenli kaldırma için desteklenmiyor.', BLOCKED_MALFORMED_METADATA: 'Bozuk veya okunamayan metadata nedeniyle kayıtlar korunur.', NO_EMBEDDED_MANIFEST: 'Desteklenen gömülü kaynak kaydı bulunamadı; yokluk garantisi değildir.' };
+  const decisionReasons: Record<string, string> = {
+    SUPPORTED_EMBEDDED: 'Desteklenen gömülü kaynak kaydı Remove ile kaldırılabilir.',
+    SUPPORTED_WITH_LOCAL_XMP_REFERENCE: 'Gömülü kaynak kaydı ve ona bağlı yerel işaretçi Remove ile kaldırılabilir.',
+    BLOCKED_EXTERNAL_REFERENCE: 'Harici kaynak bağlantısı otomatik değiştirilmez.',
+    BLOCKED_AMBIGUOUS_PROVENANCE: 'Kaynak bilgisi belirsiz olduğu için kayıtlar korunur.',
+    BLOCKED_UNSUPPORTED_STRUCTURE: 'Kaynak kaydının yapısı güvenli kaldırma için desteklenmiyor.',
+    BLOCKED_MALFORMED_METADATA: 'Bozuk veya okunamayan metadata nedeniyle kayıtlar korunur.',
+    NO_EMBEDDED_MANIFEST: 'Desteklenen gömülü kaynak kaydı bulunamadı; yokluk garantisi değildir.',
+  };
   const ready = !!scan && 'c2paRemovable' in scan && scan.c2paRemovable === true;
   const unsupported = !!scan?.cleaningBlocked && !ready;
-  return <div className={`status ${error || failed || !output && unsupported ? 'has-warning' : ''}`} role="status" aria-live="polite"><span className={`status-dot ${busy ? 'busy' : ''}`} /><div><strong>{committing ? 'Dosya yayınlanıyor · İptal edilemez' : busy === 'scan' ? 'Metadata taranıyor…' : busy === 'clean' ? 'AI kaynak kayıtları temizleniyor...' : failed && footprintResult ? 'Temizleme tamamlanamadı' : done ? 'Doğrulandı · Diske kaydedildi' : output ? output.footprintResult ? 'Desteklenen kaynak kayıtları kaldırıldı' : output.operation === 'c2pa-store-removal' ? 'Gömülü C2PA kaldırıldı · Çıktı doğrulandı' : 'Temizlendi · Çıktı doğrulandı' : error ? /iptal/i.test(error) ? 'İşlem iptal edildi' : 'İşlem tamamlanamadı' : ready ? 'Tarama tamamlandı · Temizlemeye hazır' : unsupported ? 'Kaynak kaydı bulundu · Kaldırma desteklenmiyor' : scan ? 'Metadata taraması tamamlandı' : 'Dosya bekleniyor'}</strong><p>{busy ? 'Gerçek işlem sonucu bekleniyor. Bu sekmeyi açık tut.' : failed && footprintResult ? footprintReason(footprintResult) : !output && !done && scan && 'c2paDecision' in scan && scan.c2paDecision ? decisionReasons[scan.c2paDecision.code] ?? 'Kaynak kaydı güvenle değerlendirilemedi; kayıtlar korunur.' : 'Sonuçlar yalnız incelenebilen kayıtları kapsar.'}</p></div></div>;
+  return (
+    <div
+      className={`status ${error || failed || (!output && unsupported) ? 'has-warning' : ''}`}
+      role="status"
+      aria-live="polite"
+    >
+      <span className={`status-dot ${busy ? 'busy' : ''}`} />
+      <div>
+        <strong>
+          {committing
+            ? 'Dosya yayınlanıyor · İptal edilemez'
+            : busy === 'scan'
+              ? 'Metadata taranıyor…'
+              : busy === 'clean'
+                ? 'AI kaynak kayıtları temizleniyor...'
+                : failed && footprintResult
+                  ? 'Temizleme tamamlanamadı'
+                  : done
+                    ? 'Doğrulandı · Diske kaydedildi'
+                    : output
+                      ? output.footprintResult
+                        ? 'Desteklenen kaynak kayıtları kaldırıldı'
+                        : output.operation === 'c2pa-store-removal'
+                          ? 'Gömülü C2PA kaldırıldı · Çıktı doğrulandı'
+                          : 'Temizlendi · Çıktı doğrulandı'
+                      : error
+                        ? /iptal/i.test(error)
+                          ? 'İşlem iptal edildi'
+                          : 'İşlem tamamlanamadı'
+                        : ready
+                          ? 'Tarama tamamlandı · Temizlemeye hazır'
+                          : unsupported
+                            ? 'Kaynak kaydı bulundu · Kaldırma desteklenmiyor'
+                            : scan
+                              ? 'Metadata taraması tamamlandı'
+                              : 'Dosya bekleniyor'}
+        </strong>
+        <p>
+          {busy
+            ? 'Gerçek işlem sonucu bekleniyor. Bu sekmeyi açık tut.'
+            : failed && footprintResult
+              ? footprintReason(footprintResult)
+              : !output && !done && scan && 'c2paDecision' in scan && scan.c2paDecision
+                ? (decisionReasons[scan.c2paDecision.code] ??
+                  'Kaynak kaydı güvenle değerlendirilemedi; kayıtlar korunur.')
+                : 'Sonuçlar yalnız incelenebilen kayıtları kapsar.'}
+        </p>
+      </div>
+    </div>
+  );
 }
 export function ScanSummary({ total, removable, preserved }: { total: number; removable: number; preserved: number }) {
-  return <div className="summary-counts"><div><strong>{total}</strong><span>Bulunan metadata kaydı</span></div><div><strong>{removable}</strong><span>Temizlenebilir kayıt</span></div><div><strong>{preserved}</strong><span>Korunan kayıt</span></div></div>;
+  return (
+    <div className="summary-counts">
+      <div>
+        <strong>{total}</strong>
+        <span>Bulunan metadata kaydı</span>
+      </div>
+      <div>
+        <strong>{removable}</strong>
+        <span>Temizlenebilir kayıt</span>
+      </div>
+      <div>
+        <strong>{preserved}</strong>
+        <span>Korunan kayıt</span>
+      </div>
+    </div>
+  );
 }
-export function VerificationResult({ output, videoDone, videoRemoved, total, download }: { output?: VerifiedOutput; videoDone: boolean; videoRemoved: number; total: number; download: () => void }) {
+export function VerificationResult({
+  output,
+  videoDone,
+  videoRemoved,
+  total,
+  download,
+}: {
+  output?: VerifiedOutput;
+  videoDone: boolean;
+  videoRemoved: number;
+  total: number;
+  download: () => void;
+}) {
   if (!output && !videoDone) return null;
-  if (output?.footprintResult) return <section className="verification" role="status"><span className="chip">Çıktı doğrulandı</span><h3>{output.footprintResult.status === 'PARTIALLY_REMOVED' ? 'Desteklenen kayıtların bir kısmı kaldırıldı; diğerleri korundu' : 'Desteklenen kaynak ve metadata kayıtları kaldırıldı'}</h3><p>{output.removed} kayıt kaldırıldı · {output.retained} kayıt korundu. Sıkıştırılmış görüntü yükünün eşitliği doğrulandı; kaynak dosya değişmedi.</p>{output.changedFields?.map(field => <p key={field.field}>Değiştirilen alan: <code>{field.field}</code> · Önceki hedef: <code>{field.previousValue}</code></p>)}<p>Bu doğrulama tüm AI izlerinin silindiği veya C2PA imzasının doğrulandığı anlamına gelmez.</p><p className="warning">Piksel içi filigranlar (ör. SynthID) bu araçla kaldırılmaz.</p><button className="primary" onClick={download}>Download</button></section>;
-  if (output?.operation === 'c2pa-store-removal') return <section className="verification" role="status"><span className="chip">Çıktı doğrulandı</span><h3>{output.changedFields?.length ? 'Gömülü C2PA ve ilişkili yerel XMP işaretçisi kaldırıldı' : 'Yalnız gömülü C2PA deposu kaldırıldı'}</h3>{output.changedFields?.map(field => <p key={field.field}>Değiştirilen alan: <code>{field.field}</code> · Önceki hedef: <code>{field.previousValue}</code></p>)}<p>{output.changedFields?.length ? 'İlgisiz XMP alanları ve diğer metadata korundu.' : 'Diğer metadata korundu.'} Metadata temizliği veya Güvenli Mod temizliği uygulanmadı; kaynak dosya değişmedi.</p><p>Çıktı yeniden tarandı; sıkıştırılmış görüntü yükünün eşitliği doğrulandı. Bu kontrol C2PA imzası, trust veya içerik hash’inin kriptografik doğrulaması değildir. Harici manifestler etkilenmez.</p><p className="warning">Piksel içi filigranlar (ör. SynthID) bu araçla kaldırılmaz.</p><button className="primary" onClick={download}>C2PA Kaldırılmış Dosyayı İndir</button></section>;
-  return <section className="verification" role="status"><span className="chip">Çıktı doğrulandı</span><h3>Temizlik tamamlandı</h3><p>{output?.removed ?? videoRemoved} kayıt kaldırıldı · {output?.retained ?? Math.max(0, total - videoRemoved)} teknik kayıt korundu.</p><p>{output ? 'Çıktı yeniden tarandı; sıkıştırılmış görüntü yükünün eşitliği doğrulandı.' : 'Doğrulanmış dosya seçilen konuma kaydedildi. Ayrı indirme gerekmez.'}</p>{output && <button className="primary" onClick={download}>Temizlenmiş Dosyayı İndir</button>}</section>;
+  if (output?.footprintResult)
+    return (
+      <section className="verification" role="status">
+        <span className="chip">Çıktı doğrulandı</span>
+        <h3>
+          {output.footprintResult.status === 'PARTIALLY_REMOVED'
+            ? 'Desteklenen kayıtların bir kısmı kaldırıldı; diğerleri korundu'
+            : 'Desteklenen kaynak ve metadata kayıtları kaldırıldı'}
+        </h3>
+        <p>
+          {output.removed} kayıt kaldırıldı · {output.retained} kayıt korundu. Sıkıştırılmış görüntü yükünün eşitliği
+          doğrulandı; kaynak dosya değişmedi.
+        </p>
+        {output.changedFields?.map(field => (
+          <p key={field.field}>
+            Değiştirilen alan: <code>{field.field}</code> · Önceki hedef: <code>{field.previousValue}</code>
+          </p>
+        ))}
+        <p>Bu doğrulama tüm AI izlerinin silindiği veya C2PA imzasının doğrulandığı anlamına gelmez.</p>
+        <p className="warning">Piksel içi filigranlar (ör. SynthID) bu araçla kaldırılmaz.</p>
+        <button className="primary" onClick={download}>
+          Download
+        </button>
+      </section>
+    );
+  if (output?.operation === 'c2pa-store-removal')
+    return (
+      <section className="verification" role="status">
+        <span className="chip">Çıktı doğrulandı</span>
+        <h3>
+          {output.changedFields?.length
+            ? 'Gömülü C2PA ve ilişkili yerel XMP işaretçisi kaldırıldı'
+            : 'Yalnız gömülü C2PA deposu kaldırıldı'}
+        </h3>
+        {output.changedFields?.map(field => (
+          <p key={field.field}>
+            Değiştirilen alan: <code>{field.field}</code> · Önceki hedef: <code>{field.previousValue}</code>
+          </p>
+        ))}
+        <p>
+          {output.changedFields?.length ? 'İlgisiz XMP alanları ve diğer metadata korundu.' : 'Diğer metadata korundu.'}{' '}
+          Metadata temizliği veya Güvenli Mod temizliği uygulanmadı; kaynak dosya değişmedi.
+        </p>
+        <p>
+          Çıktı yeniden tarandı; sıkıştırılmış görüntü yükünün eşitliği doğrulandı. Bu kontrol C2PA imzası, trust veya
+          içerik hash’inin kriptografik doğrulaması değildir. Harici manifestler etkilenmez.
+        </p>
+        <p className="warning">Piksel içi filigranlar (ör. SynthID) bu araçla kaldırılmaz.</p>
+        <button className="primary" onClick={download}>
+          C2PA Kaldırılmış Dosyayı İndir
+        </button>
+      </section>
+    );
+  return (
+    <section className="verification" role="status">
+      <span className="chip">Çıktı doğrulandı</span>
+      <h3>Temizlik tamamlandı</h3>
+      <p>
+        {output?.removed ?? videoRemoved} kayıt kaldırıldı · {output?.retained ?? Math.max(0, total - videoRemoved)}{' '}
+        teknik kayıt korundu.
+      </p>
+      <p>
+        {output
+          ? 'Çıktı yeniden tarandı; sıkıştırılmış görüntü yükünün eşitliği doğrulandı.'
+          : 'Doğrulanmış dosya seçilen konuma kaydedildi. Ayrı indirme gerekmez.'}
+      </p>
+      {output && (
+        <button className="primary" onClick={download}>
+          Temizlenmiş Dosyayı İndir
+        </button>
+      )}
+    </section>
+  );
 }

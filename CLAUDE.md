@@ -10,6 +10,8 @@ Güncel durum ve açık işler: `docs/history/GELISTIRME_DEVIR_OZETI_2026-11-18.
 npm ci
 npm test        # Node test runner (src/**/*.test.ts + server.test.mjs); video testleri PATH'te ffmpeg (libx264) ister
 npm run typecheck:tests  # testleri de tip denetiminden geçirir (tsconfig.test.json, @types/node)
+npm run lint    # ESLint (eslint.config.js)
+npm run format  # Prettier yazar; CI npm run format:check çalıştırır
 npm run build   # tsc --noEmit && vite build
 npm start       # dist'i http://localhost:3000 üzerinde sunar
 ```
@@ -17,7 +19,7 @@ npm start       # dist'i http://localhost:3000 üzerinde sunar
 - `npm test` `src/**/*.test.ts` glob'unu kullanır; yeni test dosyası otomatik çalışır.
 - `tsconfig.json` (build) testleri ve Node tiplerini hariç tutar; testler `tsconfig.test.json` ile ayrıca denetlenir (CI'da `npm run typecheck:tests`).
 - `web/tests/*-acceptance.js` ve `footprints-fixtures.mjs` `npm test` ile çalışmaz; yollar ortam değişkenleriyle verilir (`AFC_FIXTURES_DIR`, `AFC_VIDEO_FIXTURE`, `AFC_SCREENSHOT_DIR`, `AFC_FIXTURE_CACHE_PARENT`, `AFC_PYTHON`; ayrıntı `web/README.md`).
-- CI: `.github/workflows/web-ci.yml` (Node 24, ffmpeg, `npm ci` / `npm run typecheck:tests` / `npm test` / `npm run build`). CI yeşil olmadan birleştirme.
+- CI: `.github/workflows/web-ci.yml` (Node 24, ffmpeg, `npm ci` / `npm run lint` / `npm run format:check` / `npm run typecheck:tests` / `npm test` / `npm run build`). CI yeşil olmadan birleştirme.
 
 ## Değişmez kurallar
 
@@ -42,5 +44,5 @@ npm start       # dist'i http://localhost:3000 üzerinde sunar
 - C2PA kaldırma onay penceresi açmaz (karar 2026-11-18): hem `Remove AI Footprint` hem `Yalnız C2PA’yı Kaldır` düğmeye basınca çalışır; kapsam ve kaybolan bilgiler düğmenin yanında yazılır. Hak/telif gerektiren metadata temizliğinin `ConsentDialog`'u ayrı ve korunur.
 - Tüm çıktı dosyaları `<ad>-removed.<uzantı>` adını alır (görsel, C2PA, metadata, video).
 - Sonuç özetinde bir şey bulunduğunda başlık her zaman **AI METADATA BULUNDU** olur (karar 2026-11-18): açık AI beyanı, araç/parametre ipucu ve yalnız C2PA kaynak kaydı aynı başlığı kullanır. Farkı başlığın altındaki açıklama cümlesi söyler; o cümleler ayrı kalmalı. Metadata var ama tam incelenemediyse (ör. EXIF/ICC) başlık **METADATA BULUNDU**; yalnız tarama hiç rapor üretemediyse **METADATA ANALİZİ TAMAMLANAMADI**.
-- Satır sonları LF (`.gitattributes`). Lint/format aracı henüz yok.
+- Satır sonları LF (`.gitattributes`). Biçim Prettier'ın (`web/.prettierrc.json`, 120 sütun, tek tırnak, noktalı virgül); lint ESLint'in. `tests/*-acceptance.js` Prettier dışıdır: `browser_run_code` girdisi olduğundan sonunda `;` olmamalı. Toplu biçimlendirme commit'leri `.git-blame-ignore-revs`'e eklenir.
 - `.kilo/` günlükleri ve `*.zip` yedekleri commit'lenmez.
