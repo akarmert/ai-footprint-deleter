@@ -20,12 +20,14 @@ export function footprintReason(result: FootprintResult) {
 export function FootprintSummary({ report, plan, result, scanning, failed }: { report?: FootprintReport; plan?: FootprintPlan; result?: FootprintResult; scanning?: boolean; failed?: boolean }) {
   const current = result?.after ?? report;
   const state = failed || current?.incomplete && (current.state === 'NO_RECORDS' || current.state === 'PROVENANCE_ONLY' && plan?.blocked) ? 'INCOMPLETE' : current?.state;
-  const headings = { AI_DECLARATION: 'AI METADATA BULUNDU', METADATA_HINTS: 'AI METADATA BULUNDU', PROVENANCE_ONLY: 'AI METADATA BULUNDU', NO_RECORDS: 'AI METADATA BULUNAMADI', INCOMPLETE: 'METADATA ANALİZİ TAMAMLANAMADI' };
+  const headings = { AI_DECLARATION: 'AI METADATA BULUNDU', METADATA_HINTS: 'AI METADATA BULUNDU', PROVENANCE_ONLY: 'AI METADATA BULUNDU', NO_RECORDS: 'AI METADATA BULUNAMADI', INCOMPLETE: 'METADATA BULUNDU' };
+  // A scan that produced no report at all is a failure, not found-but-incomplete metadata.
+  const failedHeading = failed && !current ? 'METADATA ANALİZİ TAMAMLANAMADI' : undefined;
   const descriptions = { AI_DECLARATION: 'Metadata içinde açık AI üretim beyanı bulundu; bu beyan doğrulanmamıştır.', METADATA_HINTS: 'Araç veya üretim parametresi ipuçları bulundu; bunlar AI üretiminin kesin kanıtı değildir.', PROVENANCE_ONLY: 'C2PA kaynak kaydı bulundu; bu kayıt tek başına AI üretimi anlamına gelmez.', NO_RECORDS: 'İncelenebilen metadata alanlarında AI kaynak kaydı tespit edilmedi.', INCOMPLETE: 'Bazı metadata alanları okunamadı veya güvenilir biçimde değerlendirilemedi.' };
   const pending = scanning || !current && !failed;
   const tone = pending ? 'pending' : result ? 'processed' : state === 'NO_RECORDS' ? 'clear' : 'detected';
   return <section className={`footprint-summary ${tone}`} aria-labelledby="footprint-title" aria-live="polite" aria-atomic="true" aria-busy={!!scanning}>
-    <h3 id="footprint-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d={tone === 'clear' ? 'm8 12 3 3 5-6' : 'M12 7v6 M12 17h.01'} /></svg><span>{pending ? 'Metadata analiz ediliyor…' : result ? footprintStatuses[result.status] : state ? headings[state] : headings.INCOMPLETE}</span></h3>
+    <h3 id="footprint-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d={tone === 'clear' ? 'm8 12 3 3 5-6' : 'M12 7v6 M12 17h.01'} /></svg><span>{pending ? 'Metadata analiz ediliyor…' : result ? footprintStatuses[result.status] : failedHeading ?? (state ? headings[state] : undefined) ?? headings.INCOMPLETE}</span></h3>
     {!pending && <p>{result ? footprintReason(result) : state ? descriptions[state] : 'Dosya okunamadı; başka bir dosya seçerek tekrar deneyebilirsin.'}</p>}
     {!pending && current && <ul className="footprint-counts" aria-label={result?.after ? 'Kalan kayıtlar' : 'Bulunan kayıtlar'}>{([['explicit-ai', 'AI beyanı · Doğrulanmamış'], ['metadata-hint', 'metadata ipucu'], ['provenance', 'C2PA kaydı']] as const).map(([category, label]) => {
       const count = current.evidence.filter(item => item.category === category).length;
