@@ -37,7 +37,7 @@ export default tseslint.config(
   },
   {
     // Static server, its test and the Node-side fixture harness.
-    files: ['*.{js,mjs}', 'tests/**/*.mjs'],
+    files: ['*.{js,mjs}', 'scripts/*.mjs', 'tests/**/*.mjs'],
     languageOptions: { globals: { ...globals.node } },
     rules: { 'no-control-regex': 'off' },
   },
