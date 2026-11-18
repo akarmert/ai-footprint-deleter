@@ -2,15 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
-import {
-  scanImage,
-  cleanImage,
-  cleanC2pa,
-  cleanFootprints,
-  cleanAllMetadata,
-  verifyOutput,
-  isRemovable,
-} from './engine.ts';
+import { scanImage, cleanImage, cleanC2pa, cleanAllMetadata, verifyOutput, isRemovable } from './engine.ts';
 const fixture = (name: string): Uint8Array =>
   new Uint8Array(readFileSync(new URL(`../tests/fixtures/${name}`, import.meta.url)));
 const concat = (...parts: Uint8Array[]): Uint8Array => {
@@ -108,75 +100,34 @@ for (const ext of ['jpg', 'png', 'webp']) {
     assert.equal(result.scan.orientation, 6);
   });
 }
-for (const ext of ['jpg', 'png', 'webp']) {
-  test(`${ext} explicit comprehensive policy compared with safe on real ICC fixture`, async () => {
+for (const ext of ['jpg', 'png', 'webp'])
+  test(`${ext}: ICC is kept, selecting it is rejected and tampered output fails verification`, async () => {
     const data = fixture(`image-1.${ext}`),
       scan = scanImage(data);
-    const safeIds = scan.records.filter(r => isRemovable(r, 'safe')).map(r => r.id);
-    const allIds = scan.records.filter(r => isRemovable(r, 'comprehensive')).map(r => r.id);
-    const safe = await cleanImage(data, safeIds, true);
-    const full = await cleanImage(data, allIds, true, 'comprehensive');
-    assert.equal(safe.mode, 'safe');
-    assert.equal(full.mode, 'comprehensive');
-    assert.equal(full.payloadHash, safe.payloadHash);
-    for (const key of ['width', 'height', 'orientation', 'alpha'] as const) assert.equal(full.scan[key], scan[key]);
-    assert.equal(full.removed, allIds.length);
-    assert.equal(full.retained, scan.records.length - allIds.length);
-    assert.ok(safe.scan.records.some(r => r.kind === 'ICC'));
-    assert.equal(
-      full.scan.records.some(r => r.kind === 'ICC'),
-      ext === 'png',
+    const icc = scan.records.filter(r => r.kind === 'ICC');
+    assert.ok(icc.length);
+    assert.ok(icc.every(r => !isRemovable(r)));
+    await assert.rejects(
+      cleanImage(
+        data,
+        icc.map(r => r.id),
+        true,
+      ),
+      /korunan/,
     );
-    if (ext !== 'png') {
-      await assert.rejects(verifyOutput(data, full.data, allIds, true, 'safe'));
-      await assert.rejects(
-        cleanImage(
-          data,
-          scan.records.filter(r => r.kind === 'ICC').map(r => r.id),
-          false,
-          'comprehensive',
-        ),
-        /onay/,
-      );
-    }
-    assert.equal((await verifyOutput(data, full.data, allIds, true, 'comprehensive')).removed, allIds.length);
-    const again = await cleanImage(full.data, [], false, 'comprehensive');
-    assert.deepEqual(again.data, full.data);
-    await assert.rejects(cleanImage(data, [], true, 'invalid' as never), /modu/);
-    await assert.rejects(cleanImage(data.subarray(0, 30), [], true, 'comprehensive'));
+    const ids = scan.records.filter(r => isRemovable(r)).map(r => r.id);
+    const result = await cleanImage(data, ids, true);
+    assert.ok(result.scan.records.some(r => r.kind === 'ICC'));
+    assert.equal(result.payloadHash, (await cleanImage(data, [], false)).payloadHash);
+    const bad = result.data.slice();
+    bad[bad.length - 4]! ^= 1;
+    await assert.rejects(verifyOutput(data, bad, ids, true));
   });
-}
-test('ICC-free genuine images and tampered comprehensive output remain guarded', async () => {
-  for (const name of ['progressive.jpg', 'palette.png', 'lossless.webp']) {
-    const data = fixture(name),
-      scan = scanImage(data);
-    const result = await cleanImage(
-      data,
-      scan.records.filter(r => isRemovable(r, 'comprehensive')).map(r => r.id),
-      true,
-      'comprehensive',
-    );
-    assert.equal(result.scan.width, scan.width);
-    assert.equal(result.scan.alpha, scan.alpha);
-  }
-  const data = fixture('image-1.webp'),
-    ids = scanImage(data)
-      .records.filter(r => isRemovable(r, 'comprehensive'))
-      .map(r => r.id);
-  const result = await cleanImage(data, ids, true, 'comprehensive'),
-    bad = result.data.slice();
-  bad[20]! |= 32;
-  await assert.rejects(verifyOutput(data, bad, ids, true, 'comprehensive'));
-  const jpeg = fixture('image-1.jpg'),
-    partial = scanImage(jpeg)
-      .records.filter(r => r.kind === 'ICC')
-      .map(r => r.id);
-  const full = await cleanImage(jpeg, partial, true, 'comprehensive');
-  const corrupt = full.data.slice();
-  corrupt[corrupt.length - 4]! ^= 1;
-  await assert.rejects(verifyOutput(jpeg, corrupt, partial, true, 'comprehensive'));
+test('JFIF is never removable', () => {
+  for (const data of [fixture('progressive.jpg'), jpgInsert(fixture('progressive.jpg'), 224, bytes('JFIF\0broken'))])
+    for (const r of scanImage(data).records.filter(r => r.kind === 'JFIF')) assert.equal(isRemovable(r), false);
 });
-test('comprehensive rejects provenance in every format', async () => {
+test('metadata removal rejects provenance in every format', async () => {
   for (const data of [
     jpgInsert(fixture('image-1.jpg'), 235, bytes('c2pa')),
     pngInsert(fixture('image-1.png'), 'caBX', bytes('manifest')),
@@ -187,29 +138,10 @@ test('comprehensive rejects provenance in every format', async () => {
         data,
         scanImage(data).records.map(r => r.id),
         true,
-        'comprehensive',
       ),
       /provenance/,
     );
   }
-});
-test('comprehensive preserves orientation and rejects malformed JPEG ICC and unsafe JFIF', async () => {
-  const oriented = fixture('image-6.jpg'),
-    scan = scanImage(oriented);
-  const full = await cleanImage(
-    oriented,
-    scan.records.filter(r => isRemovable(r, 'comprehensive')).map(r => r.id),
-    true,
-    'comprehensive',
-  );
-  assert.equal(full.scan.orientation, 6);
-  const bad = jpgInsert(fixture('progressive.jpg'), 226, bytes('ICC_PROFILE\0\x01\x01broken'));
-  const icc = scanImage(bad).records.find(r => r.kind === 'ICC')!;
-  assert.equal(icc.comprehensiveOnly, undefined);
-  await assert.rejects(cleanImage(bad, [icc.id], true, 'comprehensive'));
-  const jfif = jpgInsert(fixture('progressive.jpg'), 224, bytes('JFIF\0broken'));
-  for (const r of scanImage(jfif).records.filter(r => r.kind === 'JFIF' && !r.comprehensiveOnly))
-    await assert.rejects(cleanImage(jfif, [r.id], true, 'comprehensive'));
 });
 test('progressive JPEG, lossless WebP and palette transparency', () => {
   assert.equal(scanImage(fixture('progressive.jpg')).width, 24);
@@ -836,7 +768,7 @@ for (const little of [false, true])
     assert.equal(scan.cleaningBlocked, false);
     const mpf = scan.records.find(r => r.kind === 'MPF')!;
     assert.equal(mpf.status, 'protected');
-    assert.equal(isRemovable(mpf, 'comprehensive'), false);
+    assert.equal(isRemovable(mpf), false);
     assert.ok(scan.notes.some(n => /MPF/.test(n)));
     // The MPF index itself adds no "incomplete inspection"; only the primary's own records do.
     assert.equal(scan.footprints?.incomplete, scanImage(fixture('image-1.jpg')).footprints?.incomplete);
@@ -876,7 +808,7 @@ for (const order of ['APP11 after MPF', 'APP11 before MPF'] as const)
       after = mpfEntries(result.data);
     assert.equal(after.sizes[0], before.sizes[0]! - segment);
     assert.equal(after.offsets[1], order === 'APP11 after MPF' ? before.offsets[1]! - segment : before.offsets[1]);
-    const footprints = await cleanFootprints(data, { c2paConsent: true, rightsConsent: false });
+    const footprints = await cleanAllMetadata(data);
     assert.ok(footprints.output, footprints.footprintResult.reason);
     assertMpfConsistent(footprints.output!.data, [gain]);
   });
@@ -977,7 +909,7 @@ test('remove all metadata: EXIF needing rights consent goes, ICC stays, payload 
   );
   assert.ok(output.retainedKinds.includes('ICC'));
   assert.equal(
-    output.scan.records.some(r => isRemovable(r, 'safe')),
+    output.scan.records.some(r => isRemovable(r)),
     false,
   );
   assert.equal(output.payloadHash, (await cleanImage(data, [], false)).payloadHash);

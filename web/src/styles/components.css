@@ -316,49 +316,6 @@
 .result-counts span {
   color: var(--secondary);
 }
-.cleaning-options {
-  border-top: 1px solid var(--border);
-  padding-top: 24px;
-  margin-top: 24px;
-}
-.mode-selector {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-  margin: 12px 0 16px;
-}
-.mode {
-  display: block;
-  text-align: left;
-  padding: 20px;
-  border-radius: var(--radius);
-  background: var(--night);
-  font-weight: 400;
-}
-.mode.active {
-  border-color: var(--blue);
-  background: var(--active-surface);
-  box-shadow: inset 0 0 0 1px var(--blue);
-}
-.mode-title {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-  font-weight: 650;
-  font-size: 14px;
-  margin-bottom: 8px;
-}
-.mode-title .chip {
-  color: var(--focus);
-  font-size: 10px;
-  padding: 2px 8px;
-}
-.mode-description {
-  display: block;
-  color: var(--secondary);
-  font-size: 12px;
-}
 .actions {
   display: flex;
   flex-wrap: wrap;
@@ -516,32 +473,6 @@
   padding-top: 20px;
   margin-top: 20px;
 }
-dialog {
-  max-width: 560px;
-  width: calc(100% - 40px);
-  padding: 32px;
-  background: var(--surface);
-  color: var(--text);
-  border: 1px solid var(--border);
-  border-radius: var(--panel-radius);
-  box-shadow: var(--shadow);
-}
-dialog::backdrop {
-  background: rgb(0 0 0 / 75%);
-}
-dialog h2 {
-  font-size: 24px;
-}
-dialog p {
-  font-size: 14px;
-}
-.dialog-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  justify-content: flex-end;
-  margin-top: 24px;
-}
 .info-section {
   padding: 64px 0;
   border-bottom: 1px solid var(--border);
@@ -690,9 +621,6 @@ dialog p {
   .info-section {
     padding: 44px 0;
   }
-  .mode-selector {
-    grid-template-columns: 1fr;
-  }
   .panel {
     padding: 20px;
   }
@@ -742,12 +670,6 @@ dialog p {
   }
   .actions > button,
   .verification button {
-    width: 100%;
-  }
-  dialog {
-    padding: 24px;
-  }
-  .dialog-actions > button {
     width: 100%;
   }
   .site-footer {

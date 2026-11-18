@@ -2,6 +2,7 @@
 
 ## Web — yayımlanmamış
 
+- Tek akış: görsel ve videoda yalnız „Tüm Metadata'yı Kaldır" düğmesi var. Onay penceresi, Güvenli/Kapsamlı mod seçimi, „Yalnız C2PA'yı Kaldır" ve ayrı metadata temizliği kaldırıldı; Ayrıntılar bölümü yalnız bilgi gösterir. Kullanılmayan motor kodu (`cleanFootprints`, kapsamlı mod, eski Worker mesajları) silindi.
 - Performans: büyük görsellerde tarama ve temizlik hızlandı (120 MiB PNG: Tüm Metadata'yı Kaldır 5,6 s → 2,0 s; 53 MiB JPEG 1,9 s → 1,4 s); doğrulama kapsamı aynı. Bellek tepe değeri değişmedi.
 - Yeni „Tüm Metadata'yı Kaldır" düğmesi: C2PA ile birlikte EXIF, XMP, IPTC, yorumlar ve PNG metinleri tek tıkta, tek doğrulanmış işlemde silinir; ICC ve yön bilgisi taşıyan EXIF korunur. Gerçek Gemini/ChatGPT dosyalarında tam kaldırma doğrulandı.
 - Tam incelenemeyen metadata (çoğu fotoğraftaki EXIF/ICC) artık „METADATA ANALİZİ TAMAMLANAMADI" yerine „METADATA BULUNDU" başlığıyla gösterilir; tamamen başarısız tarama eski başlığı korur.

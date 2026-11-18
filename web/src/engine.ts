@@ -3,7 +3,6 @@ import { analyzeXmp, removeXmpReference } from './xmp.ts';
 import {
   buildFootprints,
   classifyFootprintText,
-  consentFootprintPlan,
   type FootprintRecordAnalysis,
   type FootprintReport,
   type FootprintPlan,
@@ -26,7 +25,6 @@ export type ChangedField = { field: string; previousValue: string };
 type XmpPacket = { part: Part; prefix: number; analysis: ReturnType<typeof analyzeXmp> };
 type XmpPatch = { part: Part; payload: Uint8Array; previousValue: string };
 
-export type CleaningMode = 'safe' | 'comprehensive';
 export type MetadataRecord = {
   id: string;
   kind: string;
@@ -35,7 +33,6 @@ export type MetadataRecord = {
   status: 'cleanable' | 'protected' | 'unsupported';
   reason: string;
   requiresRightsConsent: boolean;
-  comprehensiveOnly?: boolean;
   footprintAnalysis?: FootprintRecordAnalysis;
 };
 export type Scan = {
@@ -235,58 +232,8 @@ function exif(data: Uint8Array): {
     return { orientation: null, value: 'EXIF TIFF ayrıştırılamadı veya güvenli sınırı aştı' };
   }
 }
-function validICC(data: Uint8Array): boolean {
-  if (
-    data.length < 132 ||
-    !['mntr', 'scnr'].includes(ascii(data, 12, 16)) ||
-    u32(data, 0) !== data.length ||
-    ascii(data, 36, 40) !== 'acsp' ||
-    ![2, 4].includes(data[8]!) ||
-    !['RGB ', 'GRAY'].includes(ascii(data, 16, 20)) ||
-    !['XYZ ', 'Lab '].includes(ascii(data, 20, 24))
-  )
-    return false;
-  const count = u32(data, 128);
-  if (count > 512 || 132 + count * 12 > data.length) return false;
-  for (let i = 0; i < count; i++) {
-    const offset = u32(data, 136 + i * 12),
-      length = u32(data, 140 + i * 12);
-    if (
-      ![
-        'desc',
-        'cprt',
-        'wtpt',
-        'bkpt',
-        'chad',
-        'rXYZ',
-        'gXYZ',
-        'bXYZ',
-        'rTRC',
-        'gTRC',
-        'bTRC',
-        'kTRC',
-        'chrm',
-        'dmnd',
-        'dmdd',
-        'lumi',
-        'meas',
-        'tech',
-        'view',
-        'vued',
-      ].includes(ascii(data, 132 + i * 12, 136 + i * 12))
-    )
-      return false;
-    if (offset % 4 || offset < 132 + count * 12 || length < 8 || offset + length > data.length) return false;
-  }
-  return true;
-}
-export function isRemovable(record: MetadataRecord, mode: CleaningMode = 'safe'): boolean {
-  return record.comprehensiveOnly
-    ? mode === 'comprehensive'
-    : record.status === 'cleanable' || (record.status === 'protected' && record.requiresRightsConsent);
-}
-function validateMode(mode: CleaningMode): void {
-  if (mode !== 'safe' && mode !== 'comprehensive') fail('Geçersiz temizleme modu');
+export function isRemovable(record: MetadataRecord): boolean {
+  return record.status === 'cleanable' || (record.status === 'protected' && record.requiresRightsConsent);
 }
 // JPEG Multi-Picture Format (CIPA DC-007) index in the primary image's APP2 'MPF\0' segment.
 // Offsets are relative to the MP header (TIFF byte-order mark right after 'MPF\0').
@@ -956,13 +903,7 @@ function parse(data: Uint8Array): Parsed {
           p[12] === 0 &&
           p[13] === 0;
         part.image = false;
-        record(
-          part,
-          'JFIF',
-          'protected',
-          safe ? 'Küçük resimsiz JFIF; kapsamlı modda yoğunluk bilgisi kaldırılabilir' : 'Desteklenmeyen JFIF korunur',
-        );
-        if (safe) part.record!.comprehensiveOnly = true;
+        record(part, 'JFIF', 'protected', 'JFIF görüntü başlığı korunur');
         part.record!.footprintAnalysis = { complete: safe, explicit: [], hints: [], dedicated: false };
       } else if (marker === 224) {
         part.image = false;
@@ -1087,39 +1028,6 @@ function parse(data: Uint8Array): Parsed {
       r.requiresRightsConsent = false;
       r.reason = 'Birden çok EXIF bloğu; yön belirsiz';
     }
-  }
-  const profiles = parts.filter(p => p.record?.kind === 'ICC');
-  if (scan.format === 'JPEG' && profiles.length) {
-    const first = profiles[0]!.payload,
-      total = first[13];
-    const valid =
-      total === profiles.length &&
-      profiles.every(
-        (p, i) =>
-          p.payload.length > 14 &&
-          ascii(p.payload, 0, 12) === 'ICC_PROFILE\0' &&
-          p.payload[12] === i + 1 &&
-          p.payload[13] === total,
-      );
-    if (valid) {
-      const joined = new Uint8Array(profiles.reduce((n, p) => n + Math.max(0, p.payload.length - 14), 0));
-      let offset = 0;
-      for (const p of profiles) {
-        joined.set(p.payload.subarray(14), offset);
-        offset += Math.max(0, p.payload.length - 14);
-      }
-      if (validICC(joined))
-        for (const p of profiles) {
-          p.record!.comprehensiveOnly = true;
-          p.record!.reason = 'Doğrulanmış ICC; yalnız kapsamlı modda kaldırılabilir, renk yönetimi değişebilir';
-        }
-    }
-  } else if (scan.format === 'WebP') {
-    for (const p of profiles)
-      if (validICC(p.payload)) {
-        p.record!.comprehensiveOnly = true;
-        p.record!.reason = 'Doğrulanmış ICC; yalnız kapsamlı modda kaldırılabilir, renk yönetimi değişebilir';
-      }
   }
   // Only top-level stores are in scope; nested EXIF/thumbnail metadata is retained.
   scan.c2paRemovable = false;
@@ -1260,7 +1168,6 @@ async function payloadHash(parts: Part[]): Promise<string> {
   return Array.from(new Uint8Array(hash), v => v.toString(16).padStart(2, '0')).join('');
 }
 type CleanResult = {
-  mode: CleaningMode;
   data: Uint8Array;
   scan: Scan;
   removed: number;
@@ -1294,8 +1201,7 @@ function patchedXmpBlock(source: Uint8Array, format: Scan['format'], patch: XmpP
   out.set(payload, 8);
   return out;
 }
-function selection(before: Parsed, ids: string[], rightsConsent: boolean, mode: CleaningMode): Set<string> {
-  validateMode(mode);
+function selection(before: Parsed, ids: string[], rightsConsent: boolean): Set<string> {
   if (before.scan.cleaningBlocked) fail('C2PA / opaque provenance: tüm temizlik engellendi');
   if (
     !Array.isArray(ids) ||
@@ -1308,35 +1214,14 @@ function selection(before: Parsed, ids: string[], rightsConsent: boolean, mode: 
   const selected = new Set(ids);
   for (const id of selected) {
     const record = before.scan.records.find(r => r.id === id);
-    if (!record || !isRemovable(record, mode)) fail('Bilinmeyen veya korunan seçim');
-    if ((record!.requiresRightsConsent || record!.kind === 'ICC') && !rightsConsent)
-      fail('Hak bilgisi kaldırma onayı gerekli');
-  }
-  if (before.scan.format === 'JPEG') {
-    const profiles = before.scan.records.filter(r => r.kind === 'ICC');
-    if (profiles.some(r => selected.has(r.id)) && profiles.some(r => !selected.has(r.id)))
-      fail('ICC segmentleri birlikte kaldırılmalı');
-    if (before.parts.some(p => p.record?.kind === 'JFIF' && selected.has(p.record.id))) {
-      const frame = before.parts.find(p => ['JPEG-c0', 'JPEG-c1', 'JPEG-c2'].includes(p.kind));
-      if (
-        !frame ||
-        ![1, 3].includes(frame.payload[5]!) ||
-        (frame.payload[5] === 3 && ![1, 2, 3].every((v, i) => frame.payload[6 + i * 3] === v)) ||
-        before.parts.some(p => p.kind === 'JPEG-ee' || (p.record?.kind === 'JFIF' && !selected.has(p.record.id)))
-      )
-        fail('JFIF renk yorumlama güvenliği doğrulanamadı');
-    }
+    if (!record || !isRemovable(record)) fail('Bilinmeyen veya korunan seçim');
+    if (record!.requiresRightsConsent && !rightsConsent) fail('Hak bilgisi kaldırma onayı gerekli');
   }
   return selected;
 }
-export async function cleanImage(
-  data: Uint8Array,
-  ids: string[],
-  rightsConsent: boolean,
-  mode: CleaningMode = 'safe',
-): Promise<CleanResult> {
+export async function cleanImage(data: Uint8Array, ids: string[], rightsConsent: boolean): Promise<CleanResult> {
   const before = parse(data);
-  const selected = selection(before, ids, rightsConsent, mode);
+  const selected = selection(before, ids, rightsConsent);
   const retained = before.parts.filter(p => !p.record || !selected.has(p.record.id));
   const length = before.header + retained.reduce((n, p) => n + p.end - p.start, 0);
   if (length > MAX) fail('Çıktı sınırı');
@@ -1351,14 +1236,13 @@ export async function cleanImage(
   for (const [i, part] of retained.entries()) {
     output.set(blocks[i]!, pos);
     if (before.scan.format === 'WebP' && part.kind === 'VP8X') {
-      if (removedKinds.has('ICCP')) output[pos + 8]! &= ~32;
       if (removedKinds.has('EXIF')) output[pos + 8]! &= ~8;
       if (removedKinds.has('XMP ')) output[pos + 8]! &= ~4;
     }
     pos += part.end - part.start;
   }
   if (before.scan.format === 'WebP') new DataView(output.buffer).setUint32(4, output.length - 8, true);
-  return verifyOutput(data, output, ids, rightsConsent, mode);
+  return verifyOutput(data, output, ids, rightsConsent);
 }
 export async function cleanC2pa(
   data: Uint8Array,
@@ -1417,7 +1301,6 @@ export async function cleanC2pa(
     changedFields: before.xmpPatch
       ? [{ field: '{http://purl.org/dc/terms/}provenance', previousValue: preview(before.xmpPatch.previousValue) }]
       : [],
-    mode: 'safe',
     data: output,
     scan: after.scan,
     removed: before.storeParts.length,
@@ -1433,89 +1316,6 @@ export async function cleanC2pa(
       'Top-level scope only: retained EXIF, thumbnails and nested metadata are not claimed removed',
     ],
   };
-}
-export async function cleanFootprints(
-  data: Uint8Array,
-  consent: { c2paConsent: boolean; rightsConsent: boolean },
-): Promise<{ footprintResult: FootprintResult; output?: CleanResult }> {
-  // No await before snapshot; all subsequent stages use privately owned bytes.
-  parse(data);
-  const source = data.slice();
-  const initial = scanImage(source),
-    before = initial.footprints!;
-  const plan = consentFootprintPlan(initial, consent?.rightsConsent === true);
-  const result = (status: FootprintResult['status'], reason: string, after?: FootprintReport): FootprintResult => ({
-    status,
-    before,
-    plan,
-    reason,
-    ...(after ? { after } : {}),
-  });
-  if (typeof consent?.c2paConsent !== 'boolean' || typeof consent?.rightsConsent !== 'boolean')
-    return { footprintResult: result('BLOCKED', 'Invalid consent') };
-  if (plan.blocked || (plan.requiresC2paConsent && !consent.c2paConsent))
-    return { footprintResult: result('BLOCKED', 'Safety blocker or required separate consent missing') };
-  if (!plan.removeC2pa && !plan.metadataIds.length)
-    return {
-      footprintResult: result(
-        before.evidence.length || before.incomplete ? 'BLOCKED' : 'NOTHING_TO_REMOVE',
-        'No safely removable footprint blocks',
-      ),
-    };
-  try {
-    let working: Uint8Array = source;
-    let removed = 0;
-    const checks: string[] = [],
-      changedFields: ChangedField[] = [];
-    if (plan.removeC2pa) {
-      const stage = await cleanC2pa(working, consent.c2paConsent);
-      working = stage.data;
-      removed += stage.removed;
-      checks.push(...stage.checks);
-      changedFields.push(...(stage.changedFields ?? []));
-    }
-    // Reparse after C2PA edits: IDs and XMP bytes from the original scan are stale.
-    const original = parse(source),
-      target = parse(working);
-    const expected = original.parts.filter(p => p.record && plan.metadataIds.includes(p.record.id));
-    const fresh = scanImage(working),
-      freshPlan = consentFootprintPlan(fresh, consent.rightsConsent);
-    const actual = target.parts.filter(p => p.record && freshPlan.metadataIds.includes(p.record.id));
-    if (
-      expected.length !== actual.length ||
-      expected.some(
-        (p, i) =>
-          p.kind !== actual[i]!.kind ||
-          !equal(source.subarray(p.start, p.end), working.subarray(actual[i]!.start, actual[i]!.end)),
-      )
-    )
-      throw new Error('Planned footprint targets changed');
-    if (freshPlan.blocked || freshPlan.removeC2pa) throw new Error('Post-C2PA safety blocker');
-    const stage = await cleanImage(working, freshPlan.metadataIds, consent.rightsConsent, 'safe');
-    removed += stage.removed;
-    checks.push(...stage.checks);
-    const finalScan = scanImage(stage.data),
-      after = finalScan.footprints!;
-    const finalPlan = consentFootprintPlan(finalScan, consent.rightsConsent);
-    if (finalPlan.metadataIds.length || finalPlan.removeC2pa) throw new Error('Removable footprints remain');
-    const final = parse(stage.data);
-    for (const key of ['format', 'width', 'height', 'alpha', 'orientation'] as const)
-      if (initial[key] !== finalScan[key]) throw new Error('Original/final image properties changed');
-    if (
-      (await payloadHash(original.parts)) !== stage.payloadHash ||
-      (await payloadHash(final.parts)) !== stage.payloadHash
-    )
-      throw new Error('Original/final payload changed');
-    plan.preserved = finalScan.records.map(r => r.id);
-    const status = after.evidence.length || after.incomplete ? 'PARTIALLY_REMOVED' : 'REMOVED_VERIFIED';
-    return {
-      footprintResult: result(status, 'All performed stages verified; retained limitations remain explicit', after),
-      output: { ...stage, scan: finalScan, retained: finalScan.records.length, removed, changedFields, checks },
-    };
-  } catch {
-    // Never expose any intermediate or unverified output, even after stage one succeeds.
-    return { footprintResult: result('VERIFICATION_FAILED', 'Atomic operation failed; no output released') };
-  }
 }
 /**
  * One-click "remove all metadata": the supported top-level C2PA store (with its local XMP
@@ -1557,10 +1357,10 @@ export async function cleanAllMetadata(
     }
     const middle = parse(working);
     if (middle.scan.cleaningBlocked) throw new Error('Post-C2PA safety blocker');
-    const ids = middle.scan.records.filter(record => isRemovable(record, 'safe')).map(record => record.id);
+    const ids = middle.scan.records.filter(record => isRemovable(record)).map(record => record.id);
     if (!removed && !ids.length) return { footprintResult: result('NOTHING_TO_REMOVE', 'No removable metadata') };
     if (ids.length) {
-      stage = await cleanImage(working, ids, true, 'safe');
+      stage = await cleanImage(working, ids, true);
       removed += stage.removed;
       checks.push(...stage.checks);
     }
@@ -1569,7 +1369,7 @@ export async function cleanAllMetadata(
       after = finalScan.footprints!;
     if (finalScan.c2pa !== 'not-detected-not-guaranteed' || finalScan.c2paRemovable)
       throw new Error('Provenance remains');
-    if (finalScan.records.some(record => isRemovable(record, 'safe'))) throw new Error('Removable metadata remains');
+    if (finalScan.records.some(record => isRemovable(record))) throw new Error('Removable metadata remains');
     for (const key of ['format', 'width', 'height', 'alpha', 'orientation'] as const)
       if (initial[key] !== finalScan[key]) throw new Error('Original/final image properties changed');
     // Encoded image payloads compared pairwise against the original (stricter than comparing two
@@ -1588,7 +1388,6 @@ export async function cleanAllMetadata(
     return {
       footprintResult: result(status, 'All metadata removal stages verified; retained blocks are listed', after),
       output: {
-        mode: 'safe',
         data: finalData,
         scan: finalScan,
         removed,
@@ -1608,10 +1407,9 @@ export async function verifyOutput(
   output: Uint8Array,
   ids: string[],
   rightsConsent: boolean,
-  mode: CleaningMode = 'safe',
 ): Promise<CleanResult> {
   const before = parse(data);
-  const selected = selection(before, ids, rightsConsent, mode);
+  const selected = selection(before, ids, rightsConsent);
   const retained = before.parts.filter(p => !p.record || !selected.has(p.record.id));
   const removedKinds = new Set(before.parts.filter(p => p.record && selected.has(p.record.id)).map(p => p.kind));
   const after = parse(output);
@@ -1653,7 +1451,6 @@ export async function verifyOutput(
     fail('Kodlanmış görüntü yükü değişti');
   const hash = await payloadHash(after.parts);
   return {
-    mode,
     data: output,
     scan: after.scan,
     removed: selected.size,
@@ -1664,7 +1461,6 @@ export async function verifyOutput(
       'All retained block bytes verified (WebP selected metadata flags adjusted only)',
       'Encoded payload bytes identical; SHA-256 recorded',
       'Format/dimensions/alpha/orientation preserved',
-      `Cleaning mode verified: ${mode}; ICC removed only by explicit comprehensive selection`,
       'Peak owned byte allocations: output <=128 MiB plus SHA-256 scratch <=128 MiB; caller input <=128 MiB',
     ],
   };

@@ -108,7 +108,7 @@ async page => {
     };
   });
   await page.locator('#media').setInputFiles(`${env('AFC_FIXTURES_DIR')}/image-1.png`);
-  await page.getByText('Metadata taranıyor…', { exact: true }).waitFor();
+  await page.getByText('Taranıyor…', { exact: true }).first().waitFor();
   await stopped('file analysis');
   await page.getByRole('button', { name: 'İptal et', exact: true }).click();
   await page.waitForFunction(n => window.atmosphereFrames > n, (await sample()).frames);

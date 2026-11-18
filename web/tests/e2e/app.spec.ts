@@ -8,7 +8,7 @@ import { scanImage, cleanImage } from '../../src/engine.ts';
 
 async function choose(page: Page, name: string, bytes: Uint8Array, mimeType = 'image/jpeg') {
   await page.locator('#media').setInputFiles({ name, mimeType, buffer: Buffer.from(bytes) });
-  await expect(page.locator('#footprint-title')).not.toHaveText('Metadata analiz ediliyor…');
+  await expect(page.locator('#footprint-title')).not.toHaveText('Taranıyor…');
 }
 async function openAdvanced(page: Page) {
   const tools = page.locator('#advanced-tools');
@@ -34,7 +34,7 @@ test('AI image: tool card, heading, one-click removal and a verified download', 
     "Tüm Metadata'yı Kaldır",
   ]);
   await page.locator('#remove-all-metadata').click();
-  await expect(page.locator('section.verification h3')).toHaveText('Bütün kaldırılabilir metadata kaldırıldı');
+  await expect(page.locator('section.verification h3')).toHaveText('Metadata kaldırıldı');
   await expect(page.locator('dialog[open]')).toHaveCount(0);
 
   const [download] = await Promise.all([
@@ -56,33 +56,22 @@ test('ordinary photo with EXIF: "METADATA BULUNDU" and EXIF removed in one click
   await expect(page.locator('#footprint-title')).toHaveText('METADATA BULUNDU');
   await expect(page.locator('.file-details .ai-tool')).toContainText('Dosyada belirtilmemiş');
   await page.locator('#remove-all-metadata').click();
-  await expect(page.locator('section.verification h3')).toHaveText('Bütün kaldırılabilir metadata kaldırıldı');
-  await expect(page.locator('section.verification')).toContainText('Bilerek korunanlar:');
+  await expect(page.locator('section.verification h3')).toHaveText('Metadata kaldırıldı');
+  await expect(page.locator('section.verification')).toContainText('Korunanlar:');
 });
 
-test('advanced: C2PA-only removal opens no dialog', async ({ page }) => {
+test('details: records are listed and no other cleaning control or dialog exists', async ({ page }) => {
   await choose(page, 'gemini.jpg', aiJpeg('Gemini', 'Google C2PA Core Generator Library'));
   await expect(page.locator('.file-details .ai-tool')).toContainText('Google Gemini');
   await openAdvanced(page);
-  await expect(page.locator('#c2pa-scope-note')).toBeVisible();
-  await page.getByRole('button', { name: 'Yalnız C2PA’yı Kaldır' }).click();
-  await expect(page.locator('section.verification h3')).toHaveText('Yalnız gömülü C2PA deposu kaldırıldı');
-  await expect(page.locator('dialog[open]')).toHaveCount(0);
-});
-
-test('advanced: rights-consent cleaning uses the dialog; cancel restores focus', async ({ page }) => {
-  await choose(page, 'exif.jpg', fixture('image-1.jpg'));
-  await openAdvanced(page);
-  const clean = page.getByRole('button', { name: "Metadata'yı Temizle" });
-  await clean.click();
-  const dialog = page.getByRole('dialog', { name: 'Hak ve telif bilgileri için onay' });
-  await expect(dialog).toBeVisible();
-  await dialog.getByRole('button', { name: 'Vazgeç' }).click();
-  await expect(dialog).toBeHidden();
-  await expect(clean).toBeFocused();
-  await clean.click();
-  await dialog.getByRole('button', { name: 'Yetkim var, temizle' }).click();
-  await expect(page.locator('section.verification h3')).toHaveText('Temizlik tamamlandı');
+  await expect(page.locator('#advanced-tools .metadata-results')).toBeVisible();
+  await expect(page.locator('#advanced-tools')).toContainText('Kayıtlar ve uygulanan kural');
+  await expect(page.getByRole('button', { name: 'Yalnız C2PA’yı Kaldır' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: "Metadata'yı Temizle" })).toHaveCount(0);
+  await expect(page.locator('dialog')).toHaveCount(0);
+  await expect(page.locator('#footprint-result').getByRole('button', { name: "Tüm Metadata'yı Kaldır" })).toHaveCount(
+    1,
+  );
 });
 
 test('unreadable file and clearing the selection', async ({ page }) => {
@@ -99,7 +88,9 @@ test('narrow screen: no horizontal overflow with results open', async ({ page })
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 
-test('video: MP4 is scanned by the video Worker and the selection can be cleared', async ({ page }, testInfo) => {
+test('video: MP4 is scanned by the video Worker, offers the same one-click removal and can be cleared', async ({
+  page,
+}, testInfo) => {
   const path = testInfo.outputPath('clip.mp4');
   const made = spawnSync(
     'ffmpeg',
@@ -112,12 +103,10 @@ test('video: MP4 is scanned by the video Worker and the selection can be cleared
   );
   test.skip(made.error !== undefined || made.status !== 0, 'ffmpeg (libx264) is not available');
   await page.locator('#media').setInputFiles(path);
-  await expect(page.locator('#inspection-title')).toHaveText('Video · Gelişmiş Araçlar');
-  await expect(page.locator('#footprint-result [role=status] strong').first()).toHaveText(
-    /Tarama tamamlandı · Temizlemeye hazır|Metadata taraması tamamlandı/,
-  );
-  await expect(page.locator('#remove-all-metadata')).toHaveCount(0);
-  await expect(page.getByRole('button', { name: "Metadata'yı Temizle" })).toBeEnabled();
+  await expect(page.locator('#inspection-title')).toHaveText('Analiz sonucu');
+  await expect(page.locator('#footprint-result [role=status] strong').first()).toHaveText('Tarama tamamlandı');
+  await expect(page.locator('#remove-all-metadata')).toBeEnabled();
+  await expect(page.locator('#all-metadata-scope-note')).toContainText('görüntü ve ses verisine dokunulmaz');
   await page.getByRole('button', { name: 'Seçimi kaldır' }).click();
   await expect(page.locator('.file-details')).toHaveCount(0);
 });

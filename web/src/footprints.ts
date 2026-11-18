@@ -19,14 +19,9 @@ export type FootprintReport = {
 export type FootprintPlan = {
   metadataIds: string[];
   removeC2pa: boolean;
-  requiresC2paConsent: boolean;
-  requiresRightsConsent: boolean;
   unsupported: string[];
   blocked: boolean;
   preserved: string[];
-  changes: string[];
-  impacts: string[];
-  fullySupported: boolean;
   reasons: string[];
 };
 export type FootprintStatus =
@@ -38,35 +33,6 @@ export type FootprintResult = {
   plan: FootprintPlan;
   reason: string;
 };
-
-// Scan plans describe all candidates; execution plans describe only authorized changes.
-export function consentFootprintPlan(scan: Scan, rightsConsent: boolean): FootprintPlan {
-  const plan = scan.footprintPlan!;
-  const retainedRights = plan.metadataIds.filter(
-    id => scan.records.some(r => r.id === id && r.requiresRightsConsent) && !rightsConsent,
-  );
-  const metadataIds = plan.metadataIds.filter(id => !retainedRights.includes(id));
-  return {
-    ...plan,
-    metadataIds,
-    requiresRightsConsent: metadataIds.some(id => scan.records.some(r => r.id === id && r.requiresRightsConsent)),
-    preserved: [...new Set([...plan.preserved, ...retainedRights])],
-    changes: footprintChanges(plan.removeC2pa, metadataIds.length > 0),
-    fullySupported: plan.fullySupported && !retainedRights.length,
-    reasons: [
-      ...plan.reasons,
-      ...(retainedRights.length
-        ? ['Ayrı hak onayı verilmediği için hak onayı gerektiren üretim parametresi blokları korunacak.']
-        : []),
-    ],
-  };
-}
-function footprintChanges(removeC2pa: boolean, removeMetadata: boolean): string[] {
-  return [
-    ...(removeC2pa ? ['Desteklenen gömülü C2PA deposu ve varsa eşleşen yerel XMP provenance alanı kaldırılacak.'] : []),
-    ...(removeMetadata ? ['Yalnız tanınmış, ayrı üretim parametresi metin blokları kaldırılacak.'] : []),
-  ];
-}
 
 // Only full, bounded metadata enters detection. Preview is deliberately not an input.
 // Text identifies hints, not proof of AI generation. Only dedicated text blocks
@@ -152,7 +118,6 @@ export function buildFootprints(
     const removable =
       !!analysis?.dedicated &&
       record.status !== 'unsupported' &&
-      !record.comprehensiveOnly &&
       (record.status === 'cleanable' || record.requiresRightsConsent);
     for (const source of analysis?.explicit ?? [])
       evidence.push({ category: 'explicit-ai', recordId: record.id, source, removable, verified: false });
@@ -192,11 +157,11 @@ export function buildFootprints(
   const removeC2pa = hasProvenance && scan.c2paRemovable === true;
   const blocked = scan.cleaningBlocked && !scan.c2paRemovable;
   const reasons = [
-    ...(blocked ? [scan.c2paDecision?.reason ?? 'Kaynak yapısı güvenli kaldırmaya uygun değil.'] : []),
-    ...(unsupported.length ? ['Karma veya desteklenmeyen metadata alanları korunacak.'] : []),
-    ...(incomplete ? ['Bazı metadata alanları tam incelenemedi; yokluk garantisi verilemez.'] : []),
+    ...(blocked ? [scan.c2paDecision?.reason ?? 'Kaynak kaydı güvenle kaldırılamıyor.'] : []),
+    ...(unsupported.length ? ['Desteklenmeyen bazı metadata alanları korunur.'] : []),
+    ...(incomplete ? ['Bazı metadata alanları tam incelenemedi.'] : []),
     ...(scan.orientation === null || scan.records.some(r => r.kind === 'XMP' && /orientation/i.test(r.preview))
-      ? ['Yön bilgisi belirsiz veya XMP içinde korunuyor; tam inceleme garantisi verilemez.']
+      ? ['Görüntü yönü belirsiz ya da XMP içinde; ilgili kayıtlar korunur.']
       : []),
   ];
   return {
@@ -204,19 +169,11 @@ export function buildFootprints(
     footprintPlan: {
       metadataIds,
       removeC2pa,
-      requiresC2paConsent: removeC2pa,
-      requiresRightsConsent: metadataIds.some(id => scan.records.find(r => r.id === id)?.requiresRightsConsent),
       unsupported: [...new Set(unsupported)],
       blocked,
       preserved: scan.records
         .filter(r => !metadataIds.includes(r.id) && !(removeC2pa && r.kind === 'C2PA / opaque provenance'))
         .map(r => r.id),
-      changes: footprintChanges(removeC2pa, metadataIds.length > 0),
-      impacts: [
-        'Kaldırılan kaynak geçmişi ve üretim parametreleri çıktıda geri getirilemez; kaynak dosya değişmez.',
-        'ICC, EXIF orientation, kodlanmış görüntü ve ilgisiz metadata varsayılan olarak korunur.',
-      ],
-      fullySupported: !blocked && !unsupported.length && !incomplete,
       reasons,
     },
   };

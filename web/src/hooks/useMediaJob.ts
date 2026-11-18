@@ -4,7 +4,7 @@ import type { FootprintResult } from '../footprints';
 import type { MediaScan, Request, Response, VerifiedOutput, VideoResponse } from '../protocol';
 
 export type Busy = '' | 'scan' | 'clean';
-export type Operation = 'metadata-consent' | 'clean' | undefined;
+export type Operation = 'clean' | undefined;
 
 /** App-owned state that must be reset together with the job (consent dialog, file input, ...). */
 export type JobCallbacks = {
@@ -125,7 +125,7 @@ export function useMediaJob(callbacks: JobCallbacks) {
     }, 120000);
   }
   function select(files: FileList | null) {
-    if ((videoWorker.current && busy) || committingRef.current || operation.current === 'metadata-consent') return;
+    if ((videoWorker.current && busy) || committingRef.current) return;
     const list = files ? Array.from(files) : [];
     clear();
     if (!list.length) return;
@@ -180,16 +180,12 @@ export function useMediaJob(callbacks: JobCallbacks) {
         }
         if (data.type === 'scan') {
           setScan(data.scan);
-        } else if (data.type === 'clean') {
-          revoke();
-          setFootprintResult(undefined);
-          setOutput(data.output);
-        } else if (data.type === 'clean-footprints') {
+        } else if (data.type === 'cleaned') {
           revoke();
           setFootprintResult(data.footprintResult);
           const verified =
             data.footprintResult.status === 'REMOVED_VERIFIED' || data.footprintResult.status === 'PARTIALLY_REMOVED';
-          setOutput(verified && data.output ? { ...data.output, footprintResult: data.footprintResult } : undefined);
+          setOutput(verified ? data.output : undefined);
         } else if (data.type === 'video-done') {
           setVideoRemoved(data.removed);
           setVideoDone(true);

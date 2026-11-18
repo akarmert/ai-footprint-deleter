@@ -122,7 +122,7 @@ test('read-only C2PA actions and generator are unverified source claims', async 
   assert.deepEqual(data, before);
   const scan = scanImage(data);
   assert.equal(scan.cleaningBlocked, true);
-  for (const mode of ['safe', 'comprehensive'] as const) await assert.rejects(cleanImage(data, [], true, mode));
+  await assert.rejects(cleanImage(data, [], true));
 });
 test('no AI declaration does not erase provenance uncertainty', () => {
   const result = readC2pa(wrap(store(false)), 'JPEG', true);
