@@ -19,7 +19,14 @@ scope.onmessage = async ({ data }) => {
       const format = validateSelection(data.file);
       if (format === 'MP4' || format === 'MOV') throw new Error('Video dosyaları bu işleyiciyle taranmaz.');
       source = new Uint8Array(await data.file.arrayBuffer());
-      const scan = scanImage(source);
+      let scan;
+      try {
+        scan = scanImage(source);
+      } catch (cause) {
+        // Parser messages are technical; keep them only as a parenthesised detail.
+        const detail = cause instanceof Error ? ` (${cause.message})` : '';
+        throw new Error(`Bu dosya okunamadı ya da yapısı desteklenmiyor${detail}.`, { cause });
+      }
       if (scan.format !== format) throw new Error('Dosya uzantısı ile dosyanın gerçek biçimi uyuşmuyor.');
       scope.postMessage({ type: 'scan', scan });
     } else if (data.type === 'clean-all-metadata') {

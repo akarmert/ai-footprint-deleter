@@ -17,7 +17,7 @@ export function supportsDiskOutput(): boolean {
 }
 export async function chooseOutput(suggestedName: string): Promise<SaveHandle> {
   const picker = (window as SaveWindow).showSaveFilePicker;
-  if (!supportsDiskOutput() || !picker) throw new Error('Doğrudan diske yazma desteklenmiyor.');
+  if (!supportsDiskOutput() || !picker) throw new Error('Bu tarayıcı dosyayı doğrudan kaydedemiyor.');
   return picker.call(window, { suggestedName });
 }
 export async function chooseTemporaryDirectory(): Promise<FileSystemDirectoryHandle> {
@@ -25,7 +25,7 @@ export async function chooseTemporaryDirectory(): Promise<FileSystemDirectoryHan
     window as Window & { showDirectoryPicker?: (options: { mode: 'readwrite' }) => Promise<FileSystemDirectoryHandle> }
   ).showDirectoryPicker;
   if (!window.isSecureContext || !picker)
-    throw new Error('Geçici klasör seçimi desteklenmiyor; güncel Chrome/Edge kullanın.');
+    throw new Error('Bu tarayıcı klasör seçmeyi desteklemiyor; masaüstü Chrome veya Edge kullan.');
   return picker.call(window, { mode: 'readwrite' });
 }
 export async function writeOutput(

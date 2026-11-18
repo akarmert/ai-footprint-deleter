@@ -70,7 +70,7 @@ test('image Worker rejects oversized images before reading bytes and invalidates
     },
   } as File;
   await self.onmessage({ data: { type: 'scan', file: oversized } });
-  assert.deepEqual(messages.at(-1), { type: 'error', message: 'Görsel sınırı 128 MiB.' });
+  assert.deepEqual(messages.at(-1), { type: 'error', message: 'Görsel en fazla 128 MiB olabilir.' });
   assert.equal(reads, 0);
   await self.onmessage({ data: { type: 'clean-all-metadata' } });
   assert.deepEqual(messages.at(-1), { type: 'error', message: 'Önce görseli yeniden seçin.' });

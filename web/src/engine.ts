@@ -229,7 +229,7 @@ function exif(data: Uint8Array): {
       footprintAnalysis: { complete: false, explicit: [], hints: [...hints], dedicated: false },
     };
   } catch {
-    return { orientation: null, value: 'EXIF TIFF ayrıştırılamadı veya güvenli sınırı aştı' };
+    return { orientation: null, value: 'EXIF okunamadı.' };
   }
 }
 export function isRemovable(record: MetadataRecord): boolean {
@@ -379,7 +379,7 @@ function parse(data: Uint8Array): Parsed {
     data.length > MAX ||
     (typeof SharedArrayBuffer !== 'undefined' && data.buffer instanceof SharedArrayBuffer)
   )
-    fail('Geçersiz veri veya 128 MiB sınırı');
+    fail('Dosya boş veya 128 MiB’tan büyük');
   const scan: Scan = {
     format: 'PNG',
     width: 0,
@@ -390,8 +390,8 @@ function parse(data: Uint8Array): Parsed {
     c2pa: 'not-detected-not-guaranteed',
     cleaningBlocked: false,
     notes: [
-      'Yalnız kapsayıcı doğrulanır; kodlanmış pikseller çözülmez.',
-      'C2PA imzası doğrulanmaz; algılanmaması yokluk garantisi değildir.',
+      'Yalnız dosya yapısı incelenir; pikseller çözülmez.',
+      'C2PA imzası doğrulanmaz; kayıt bulunmaması yokluk kanıtı değildir.',
     ],
   };
   const parts: Part[] = [];
@@ -470,12 +470,7 @@ function parse(data: Uint8Array): Parsed {
     else otherBlocked = true;
     scan.cleaningBlocked = true;
     scan.c2pa = 'detected-not-verified';
-    record(
-      part,
-      'C2PA / opaque provenance',
-      'protected',
-      'Provenans algılandı; imza doğrulayıcı yok, tüm temizlik engellendi',
-    );
+    record(part, 'C2PA / opaque provenance', 'protected', 'Kaynak kaydı; yalnız desteklenen yapıdaysa kaldırılır.');
   };
   const metadata = (part: Part, kind: string) => {
     if (kind === 'C2PA' || kind === 'APP11') {
@@ -495,7 +490,7 @@ function parse(data: Uint8Array): Parsed {
         part,
         kind,
         parsed.orientation === 1 ? 'cleanable' : 'protected',
-        parsed.orientation === 1 ? 'TIFF doğrulandı; yön 1' : 'Yön dönüşümü veya bilinmeyen TIFF korunur',
+        parsed.orientation === 1 ? 'EXIF; kaldırılabilir.' : 'Görüntü yönünü taşıyor veya okunamadı; korunur.',
         parsed.value,
         parsed.orientation === 1,
       );
@@ -537,7 +532,7 @@ function parse(data: Uint8Array): Parsed {
         if (!legacyBlockOnly) scan.cleaningBlocked = true;
         xmpFailure = {
           code: analysis.status === 'malformed' ? 'BLOCKED_MALFORMED_METADATA' : 'BLOCKED_UNSUPPORTED_STRUCTURE',
-          reason: analysis.reason ?? 'XMP güvenle çözümlenemedi',
+          reason: analysis.reason ?? 'XMP okunamadı.',
         };
       }
       if (analysis.references.length) {
@@ -594,7 +589,7 @@ function parse(data: Uint8Array): Parsed {
         part,
         kind,
         protectedXmp ? 'protected' : 'cleanable',
-        protectedXmp ? 'XMP kaynak/yön bilgisi veya desteklenmeyen yapı korunur' : 'XMP blok düzeyinde kaldırılabilir',
+        protectedXmp ? 'XMP kaynak veya yön bilgisi taşıyor ya da okunamadı; korunur.' : 'XMP; kaldırılabilir.',
         value,
         !protectedXmp,
       );
@@ -623,17 +618,23 @@ function parse(data: Uint8Array): Parsed {
     if (kind === 'Compressed PNG text') {
       otherBlocked = true;
       scan.cleaningBlocked = true;
-      record(part, kind, 'unsupported', 'Sıkıştırılmış metin/provenans yorumlanamaz; tüm temizlik engellendi');
+      record(part, kind, 'unsupported', 'Sıkıştırılmış metin okunamıyor; dosya temizlenmez.');
       return;
     }
     const value = text(part.payload);
     if (part.payload.length > MAX_TEXT || (kind === 'PNG text' && /raw profile type/i.test(value.slice(0, 80)))) {
       otherBlocked = true;
       scan.cleaningBlocked = true;
-      record(part, kind, 'protected', 'Metin sınırı veya gömülü profil/provenans; tüm temizlik engellendi', value);
+      record(
+        part,
+        kind,
+        'protected',
+        'Metin çok büyük ya da içinde profil veya kaynak kaydı var; dosya temizlenmez.',
+        value,
+      );
       return;
     }
-    record(part, kind, 'cleanable', 'Blok düzeyinde kaldırılabilir; hak bilgileri içerebilir', value, true);
+    record(part, kind, 'cleanable', 'Kaldırılabilir; telif veya yazar bilgisi içerebilir.', value, true);
     if (kind === 'IPTC')
       part.record!.footprintAnalysis = {
         ...classifyFootprintText(text(part.payload.subarray(0, MAX_TEXT)), false),
@@ -752,7 +753,7 @@ function parse(data: Uint8Array): Parsed {
           } else metadata(part, 'PNG text');
         } else if (!['IHDR', 'PLTE', 'tRNS'].includes(kind)) {
           if (!(data[pos + 4]! & 32)) fail('Desteklenmeyen kritik PNG chunk');
-          record(part, kind, 'protected', 'Bilinmeyen/işlevsel chunk korunur');
+          record(part, kind, 'protected', 'Tanınmayan blok; korunur.');
         }
       }
       pos = finish;
@@ -807,14 +808,11 @@ function parse(data: Uint8Array): Parsed {
             dedicated: false,
           };
           scan.notes.push(
-            'Çoklu görüntü (MPF) dosyası: ikincil görüntüler (ör. HDR kazanç haritası) bayt bayt korunur; metadata’ları kaldırılmaz, yalnız kaynak/AI ipuçları için taranır.',
+            'Çoklu görüntülü dosya (MPF): ek görüntüler (ör. HDR kazanç haritası) olduğu gibi korunur; metadata’ları silinmez.',
           );
           if (secondaryMetadata) {
-            mp.record!.reason =
-              'Çoklu görüntü dizini (MPF) korunur; ikincil görüntülerde EXIF/XMP gibi metadata var ve kaldırılmaz';
-            scan.notes.push(
-              'İkincil görüntülerde EXIF/XMP gibi metadata bulundu; bu araç onları kaldırmaz. Çıktıda bu bilgiler kalır.',
-            );
+            mp.record!.reason = 'Çoklu görüntü dizini (MPF); ek görüntülerdeki EXIF/XMP silinmez.';
+            scan.notes.push('Ek görüntülerde EXIF/XMP var; bu araç onları silmez ve çıktıda kalırlar.');
           }
         }
         break;
@@ -868,7 +866,7 @@ function parse(data: Uint8Array): Parsed {
         else {
           otherBlocked = true;
           scan.cleaningBlocked = true;
-          record(part, 'APP1', 'protected', 'Bilinmeyen veya genişletilmiş APP1/provenans; tüm temizlik engellendi');
+          record(part, 'APP1', 'protected', 'Tanınmayan APP1 bloğu; dosya temizlenmez.');
         }
       } else if (marker === 226) {
         part.image = false;
@@ -876,12 +874,7 @@ function parse(data: Uint8Array): Parsed {
         else if (ascii(p, 0, Math.min(4, p.length)) === 'MPF\0') {
           if (mpfPart || scanned) fail('Birden çok veya geç MPF segmenti');
           mpfPart = part;
-          record(
-            part,
-            'MPF',
-            'protected',
-            'Çoklu görüntü dizini (MPF) korunur; kaldırmalarda yalnız boyut/konum alanları güncellenir',
-          );
+          record(part, 'MPF', 'protected', 'Çoklu görüntü dizini (MPF); korunur, yalnız konum alanları güncellenir.');
           part.record!.footprintAnalysis = { complete: true, explicit: [], hints: [], dedicated: false };
         } else record(part, 'APP2', 'protected', 'Bilinmeyen APP2 korunur');
       } else if (marker === 235) {
@@ -903,7 +896,7 @@ function parse(data: Uint8Array): Parsed {
           p[12] === 0 &&
           p[13] === 0;
         part.image = false;
-        record(part, 'JFIF', 'protected', 'JFIF görüntü başlığı korunur');
+        record(part, 'JFIF', 'protected', 'JFIF görüntü başlığı; korunur.');
         part.record!.footprintAnalysis = { complete: safe, explicit: [], hints: [], dedicated: false };
       } else if (marker === 224) {
         part.image = false;
@@ -911,7 +904,7 @@ function parse(data: Uint8Array): Parsed {
           part,
           ascii(p, 0, 5) === 'JFXX\0' ? 'JFXX' : 'APP0',
           'protected',
-          'Bilinmeyen APP0 veya küçük resim korunur',
+          'Tanınmayan APP0 veya küçük resim; korunur.',
         );
       } else if (marker >= 224 && marker <= 239 && ![224, 238].includes(marker))
         record(part, `APP${marker - 224}`, 'protected', 'Bilinmeyen APP korunur');
@@ -922,7 +915,7 @@ function parse(data: Uint8Array): Parsed {
       // An MPF index without the secondary images it must describe is inconsistent: keep everything.
       otherBlocked = true;
       scan.cleaningBlocked = true;
-      mpfPart.record!.reason = 'MPF dizini dosyadaki görüntülerle eşleşmiyor; tüm temizlik engellendi';
+      mpfPart.record!.reason = 'MPF dizini görüntülerle eşleşmiyor; dosya temizlenmez.';
     }
     if (mpfIndex) {
       // Ultra HDR/gain-map descriptors in the primary XMP are kept with the MPF images they describe.
@@ -930,7 +923,7 @@ function parse(data: Uint8Array): Parsed {
         if (part.record?.kind === 'XMP' && /hdrgm|GContainer|Container:Directory/i.test(text(part.payload))) {
           part.record.status = 'protected';
           part.record.requiresRightsConsent = false;
-          part.record.reason = 'Ultra HDR / çoklu görüntü dizini XMP korunur';
+          part.record.reason = 'Ultra HDR bilgisi (XMP); korunur.';
         }
     }
   } else if (ascii(data, 0, 4) === 'RIFF' && ascii(data, 8, 12) === 'WEBP') {
@@ -1019,14 +1012,14 @@ function parse(data: Uint8Array): Parsed {
       if (!!(flags & 16) !== scan.alpha) fail('WebP alpha bayrak uyuşmazlığı');
     }
   } else fail('Desteklenmeyen görüntü biçimi');
-  if (!scan.width || !scan.height || scan.width * scan.height > 40_000_000) fail('Görüntü boyutu/40 megapiksel sınırı');
+  if (!scan.width || !scan.height || scan.width * scan.height > 40_000_000) fail('Görüntü 40 megapikselden büyük');
   const exifs = scan.records.filter(r => r.kind === 'EXIF');
   if (exifs.length > 1) {
     scan.orientation = null;
     for (const r of exifs) {
       r.status = 'protected';
       r.requiresRightsConsent = false;
-      r.reason = 'Birden çok EXIF bloğu; yön belirsiz';
+      r.reason = 'Birden çok EXIF bloğu var; yön belirsiz, korunur.';
     }
   }
   // Only top-level stores are in scope; nested EXIF/thumbnail metadata is retained.
@@ -1035,33 +1028,36 @@ function parse(data: Uint8Array): Parsed {
   const references = xmpPackets.flatMap(packet => packet.analysis.references.map(reference => ({ packet, reference })));
   scan.c2paDecision = xmpFailure ?? {
     code: storeParts.length ? 'BLOCKED_UNSUPPORTED_STRUCTURE' : 'NO_EMBEDDED_MANIFEST',
-    reason: storeParts.length ? 'Gömülü manifest yapısı desteklenmiyor' : 'Gömülü manifest bulunamadı',
+    reason: storeParts.length ? 'C2PA kaydının yapısı desteklenmiyor.' : 'Gömülü C2PA kaydı yok.',
   };
   if (references.length > 1 || (references.length && xmpPackets.length !== 1)) {
     otherBlocked = true;
     scan.c2paDecision = {
       code: 'BLOCKED_AMBIGUOUS_PROVENANCE',
-      reason: 'Birden fazla XMP paketi veya kaynak işaretçisi var',
+      reason: 'Birden fazla XMP paketi veya kaynak işaretçisi var; hangisinin geçerli olduğu belirsiz.',
     };
   } else if (references.some(item => !item.reference.value.startsWith('self#jumbf='))) {
     otherBlocked = true;
     scan.c2paDecision = {
       code: 'BLOCKED_EXTERNAL_REFERENCE',
-      reason: 'Haricî kaynak işaretçisi otomatik değiştirilmez',
+      reason: 'Dosya harici bir kaynak kaydına bağlanıyor; değiştirilmez.',
     };
   } else if (otherBlocked && !xmpFailure)
-    scan.c2paDecision = { code: 'BLOCKED_AMBIGUOUS_PROVENANCE', reason: 'Başka belirsiz kaynak bilgisi mevcut' };
+    scan.c2paDecision = {
+      code: 'BLOCKED_AMBIGUOUS_PROVENANCE',
+      reason: 'Dosyada başka, belirsiz bir kaynak bilgisi var.',
+    };
   if (!storeParts.length && !references.length && !scan.cleaningBlocked && scan.c2pa === 'not-detected-not-guaranteed')
-    scan.c2paDecision = { code: 'NO_EMBEDDED_MANIFEST', reason: 'Gömülü manifest bulunamadı' };
+    scan.c2paDecision = { code: 'NO_EMBEDDED_MANIFEST', reason: 'Gömülü C2PA kaydı yok.' };
   if (references.length === 1 && !storeParts.length && references[0]!.reference.value.startsWith('self#jumbf=')) {
     otherBlocked = true;
     scan.c2paDecision = {
       code: 'BLOCKED_AMBIGUOUS_PROVENANCE',
-      reason: 'Yerel işaretçi için gömülü manifest bulunamadı',
+      reason: 'XMP bir C2PA kaydını gösteriyor ama kayıt dosyada yok.',
     };
   }
   if (storeParts.length && scan.orientation === null && !xmpFailure)
-    scan.c2paDecision = { code: 'BLOCKED_MALFORMED_METADATA', reason: 'EXIF yön bilgisi bozuk veya belirsiz' };
+    scan.c2paDecision = { code: 'BLOCKED_MALFORMED_METADATA', reason: 'EXIF yön bilgisi bozuk veya belirsiz.' };
   if (storeParts.length && !otherBlocked && scan.orientation !== null) {
     try {
       let store: Uint8Array;
@@ -1115,7 +1111,7 @@ function parse(data: Uint8Array): Parsed {
         if (!resolveLocalC2paReference(reference.value, index)) {
           scan.c2paDecision = {
             code: 'BLOCKED_AMBIGUOUS_PROVENANCE',
-            reason: 'Yerel işaretçi doğrulanmış manifest/claim yoluyla eşleşmiyor',
+            reason: 'XMP işaretçisi C2PA kaydıyla eşleşmiyor.',
           };
           fail('XMP target mismatch');
         }
@@ -1129,11 +1125,11 @@ function parse(data: Uint8Array): Parsed {
       scan.c2paDecision = {
         code: references.length ? 'SUPPORTED_WITH_LOCAL_XMP_REFERENCE' : 'SUPPORTED_EMBEDDED',
         reason: references.length
-          ? 'Gömülü manifest ve tek yerel XMP işaretçisi birlikte kaldırılabilir'
-          : 'Desteklenen gömülü manifest kaldırılabilir',
+          ? 'C2PA kaydı ve ona bağlı XMP işaretçisi kaldırılabilir.'
+          : 'C2PA kaydı kaldırılabilir.',
       };
       scan.notes.push(
-        'C2PA kaldırma kapsamı yalnız üst düzey manifest store’dur; korunan EXIF, küçük resim ve iç içe metadata kaldırılmış sayılmaz.',
+        'Yalnız üst düzey C2PA kaydı kaldırılır; iç içe kayıtlar (ör. küçük resimdekiler) kapsam dışıdır.',
       );
     } catch {
       /* Unsupported or ambiguous stores remain fail-closed. */

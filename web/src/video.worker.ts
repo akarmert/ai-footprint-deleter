@@ -13,7 +13,7 @@ let cancelled = false;
 let committing = false;
 let target: FileSystemWritableFileStream | undefined;
 const check = () => {
-  if (cancelled) throw new Error('İşlem iptal edildi; çıktı tamamlanmadı.');
+  if (cancelled) throw new Error('İşlem iptal edildi; dosya kaydedilmedi.');
 };
 scope.onmessage = async ({ data }) => {
   if (data.type === 'cancel') {
@@ -25,7 +25,7 @@ scope.onmessage = async ({ data }) => {
     return;
   }
   if (busy) {
-    scope.postMessage({ type: 'error', message: 'Video Worker meşgul; işlem reddedildi.' });
+    scope.postMessage({ type: 'error', message: 'Başka bir işlem sürüyor.' });
     return;
   }
   busy = true;
@@ -37,13 +37,18 @@ scope.onmessage = async ({ data }) => {
   try {
     if (data.type === 'scan') {
       source = data.file;
-      scan = await scanVideo(source, data.format, check);
+      try {
+        scan = await scanVideo(source, data.format, check);
+      } catch (cause) {
+        if (cancelled) throw cause;
+        const detail = cause instanceof Error ? ` (${cause.message})` : '';
+        throw new Error(`Bu video okunamadı ya da yapısı desteklenmiyor${detail}.`, { cause });
+      }
       check();
       result = { type: 'scan', scan };
     } else {
-      if (!source || !scan) throw new Error('Önce videoyu yeniden tarayın.');
-      if (data.handle.name === source.name)
-        throw new Error('Orijinali korumak için farklı adlı bir çıktı dosyası seçin.');
+      if (!source || !scan) throw new Error('Önce videoyu yeniden seç.');
+      if (data.handle.name === source.name) throw new Error('Orijinalin üzerine yazılamaz; farklı bir dosya adı seç.');
       if (!data.temporaryDirectory) {
         const estimate = await navigator.storage.estimate();
         check();
@@ -53,17 +58,19 @@ scope.onmessage = async ({ data }) => {
           !Number.isFinite(estimate.quota) ||
           !Number.isFinite(estimate.usage)
         )
-          throw new Error('Tarayıcı kotası belirlenemedi; geçici yerel klasör seçin.');
+          throw new Error('Tarayıcının boş alanı ölçülemedi; geçici dosyalar için bir klasör seç.');
         const required = source.size + 1024 * 1024;
         if (estimate.quota - estimate.usage < required)
-          throw new Error(`Tahmini OPFS alanı yetersiz: ${required} bayt gerekli; geçici yerel klasör seçin.`);
+          throw new Error(
+            `Tarayıcının geçici alanı yetmiyor (yaklaşık ${required.toLocaleString('tr-TR')} bayt gerekli); geçici dosyalar için bir klasör seç.`,
+          );
       }
       root = data.temporaryDirectory ?? (await navigator.storage.getDirectory());
       check();
       const candidate = `afc-video-${crypto.randomUUID()}.tmp`;
       try {
         await root.getFileHandle(candidate);
-        throw new Error('Geçici dosya adı zaten mevcut; işlem başlatılmadı.');
+        throw new Error('Geçici dosya adı zaten kullanılıyor; işlem başlatılmadı.');
       } catch (error) {
         if (!(error && typeof error === 'object' && 'name' in error && error.name === 'NotFoundError')) throw error;
       }
@@ -72,10 +79,10 @@ scope.onmessage = async ({ data }) => {
       try {
         sameEntry = await stage.isSameEntry(data.handle);
       } catch (error) {
-        cleanupWarning = `Geçici dosya kimliği doğrulanamadı; silinmedi. Seçilen geçici alandaki ${candidate} dosyasını kontrol edin.`;
+        cleanupWarning = `Geçici dosya doğrulanamadığı için silinmedi. Geçici klasördeki ${candidate} dosyasını kontrol et.`;
         throw error;
       }
-      if (sameEntry) throw new Error('Geçici dosya ile hedef aynı olamaz.');
+      if (sameEntry) throw new Error('Geçici dosya ile kayıt yeri aynı olamaz.');
       temporary = candidate;
       const staging = await stage.createWritable();
       try {
@@ -124,7 +131,7 @@ scope.onmessage = async ({ data }) => {
         ? { type: 'cancelled' }
         : {
             type: 'error',
-            message: `${committing || abortFailed ? 'Disk işlem sonucu belirsiz; hedef dosyayı kontrol edin. ' : ''}${error && typeof error === 'object' && 'name' in error && error.name === 'QuotaExceededError' ? (data.type === 'clean' && data.temporaryDirectory ? 'Depolama alanı yetersiz; seçilen geçici klasörün ve hedef diskin boş alanını kontrol edin. ' : 'Depolama kotası aşıldı; yeniden tarayın, ardından geçici yerel klasör seçip deneyin. Kota tahmini kapasite garantisi değildir. ') : ''}${error instanceof Error ? error.message : 'Video işlemi başarısız.'}`,
+            message: `${committing || abortFailed ? 'Kayıt sonucu belirsiz; kayıt yerindeki dosyayı kontrol et. ' : ''}${error && typeof error === 'object' && 'name' in error && error.name === 'QuotaExceededError' ? (data.type === 'clean' && data.temporaryDirectory ? 'Yer yetersiz; geçici klasörün ve kayıt yerinin boş alanını kontrol et. ' : 'Tarayıcının depolama alanı doldu; dosyayı yeniden seç, geçici dosyalar için bir klasör seçip tekrar dene. ') : ''}${error instanceof Error ? error.message : 'Video işlenemedi.'}`,
           };
   } finally {
     if (root && temporary) {
@@ -139,8 +146,8 @@ scope.onmessage = async ({ data }) => {
       } catch {
         cleanupWarning =
           data.type === 'clean' && data.temporaryDirectory
-            ? `Geçici medya silinemedi: seçtiğiniz klasördeki ${temporary} dosyasını kontrol edip silin. Hedefin kayıt sonucu değişmez.`
-            : 'Geçici yerel medya dosyası silinemedi. Tarayıcı site verilerini temizleyin; bu işlem hedef dosyanın kayıt sonucunu değiştirmez.';
+            ? `Geçici dosya silinemedi: seçtiğin klasördeki ${temporary} dosyasını sil. Kaydedilen dosya bundan etkilenmez.`
+            : 'Geçici dosya silinemedi. Tarayıcının site verilerini temizle; kaydedilen dosya bundan etkilenmez.';
       } finally {
         clearTimeout(cleanupTimer);
       }

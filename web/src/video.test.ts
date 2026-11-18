@@ -427,7 +427,7 @@ test('supported fixed sample leaves preserved byte-for-byte and unknown colr blo
   assert.equal(scan.cleaningBlocked, true);
   assert.ok(scan.notes.some(n => n.includes('Unknown colr')));
   const audio = await scanVideo(fixture({ audio: true }), 'MP4');
-  assert.ok(audio.notes.some(n => n.includes('video track')));
+  assert.ok(audio.notes.some(n => n.includes('video izi')));
 });
 for (const [type, offset, value] of [
   ['pasp', 3, 0],

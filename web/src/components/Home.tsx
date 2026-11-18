@@ -56,12 +56,12 @@ export function Header() {
       >
         Menü
       </button>
-      <nav id="site-nav" className={open ? 'is-open' : ''} aria-label="Ana navigasyon" onClick={() => setOpen(false)}>
-        <a href="#how-it-works">Nasıl Çalışır?</a>
+      <nav id="site-nav" className={open ? 'is-open' : ''} aria-label="Ana menü" onClick={() => setOpen(false)}>
+        <a href="#how-it-works">Nasıl çalışır?</a>
         <a href="#privacy">Gizlilik</a>
         <a href="#faq">SSS</a>
         <a className="button primary" href="#workspace">
-          Dosya Analiz Et
+          Dosya seç
         </a>
       </nav>
     </header>
@@ -73,11 +73,11 @@ export function Hero() {
       <h1 id="hero-title">
         Dosyanı tanı.
         <br />
-        <span>İzlerini yönet.</span>
+        <span>İzlerini temizle.</span>
       </h1>
       <p>
-        Görsel ve videolarındaki gizli metadata bilgilerini incele, desteklenen kayıtları güvenle temizle. Dosyaların
-        sunucuya yüklenmeden tarayıcında işlensin.
+        Görsel ve videolarındaki metadata’yı ve AI kaynak kayıtlarını gör, tek tıkla temizle. Dosyan sunucuya
+        gönderilmez; her şey tarayıcında olur.
       </p>
     </section>
   );
@@ -85,27 +85,28 @@ export function Hero() {
 const questions = [
   [
     'Metadata nedir?',
-    'Bir dosyaya eklenmiş cihaz, tarih, konum, üretim aracı veya renk profili gibi bilgilerdir. Her dosya aynı bilgileri içermez.',
+    'Dosyaya eklenen cihaz, tarih, konum, yazılım, telif ve AI aracı gibi bilgilerdir. Her dosyada farklıdır.',
+  ],
+  ['Dosyam sunucuya yükleniyor mu?', 'Hayır. Dosyan tarayıcında işlenir ve hiçbir sunucuya gönderilmez.'],
+  [
+    'Hangi dosyaları destekliyor?',
+    'Görsel: JPEG, PNG ve WebP, en fazla 128 MiB. Video: MP4 ve MOV, en fazla 1 GB; masaüstü Chrome veya Edge gerekir. Bazı video biçimleri desteklenmez.',
   ],
   [
-    'Dosyalarım sunucuya yükleniyor mu?',
-    'Hayır. Medya tarayıcındaki Worker içinde yerel olarak işlenir. Video kaydında geçici yerel depolama kullanılabilir.',
+    'Görüntü kalitesi değişir mi?',
+    'Hayır. Pikseller yeniden kodlanmaz; yalnız metadata blokları çıkarılır. Renk profili ve görüntü yönü korunur.',
   ],
   [
-    'Hangi formatlar destekleniyor?',
-    'JPEG, PNG, WebP ve sınırlı MP4/MOV yapıları desteklenir. Görsellerde sınır 128 MiB, videolarda 1.000.000.000 bayttır. Her codec veya kapsayıcı yapısı desteklenmez.',
+    'Bütün AI izlerini siler mi?',
+    'Hayır. Yalnız dosyadaki metadata ve C2PA kayıtları silinir. SynthID gibi piksel içi filigranlar ve görünür logolar kalır. AI tespit araçlarını atlatma garantisi yoktur.',
   ],
   [
-    'Görüntü kalitesi değişiyor mu?',
-    'Desteklenen metadata yeniden kodlama yapılmadan kaldırılır. Güvenli Mod renk profilini ve görüntü yönünü korur. Kapsamlı modda JPEG/WebP ICC kaldırılması renk görünümünü etkileyebilir.',
+    'C2PA nedir, doğrulanıyor mu?',
+    'C2PA, dosyanın nasıl üretildiğini ve düzenlendiğini anlatan kaynak kaydıdır. Bu araç kaydı okur ve kaldırır, ama imzasını doğrulamaz; okunan bilgiler doğrulanmamış beyandır.',
   ],
   [
-    'Bütün AI izlerini kaldırabilir mi?',
-    'Hayır. Metadata beyanı AI üretiminin kesin kanıtı değildir. Bütün metadata’nın silinmesi, görünmez filigran kaldırılması veya AI tespit sistemlerini yanıltma garantisi yoktur.',
-  ],
-  [
-    'C2PA kayıtları doğrulanıyor mu?',
-    'Web sürümü kriptografik imza, trust veya içerik hash doğrulaması yapmaz. Okunabilen alanlar doğrulanmamış kaynak beyanıdır. Mevcut veya belirsiz provenance metadata temizliğini engeller. Desteklenen JPEG/PNG/WebP dosyalarında üst düzey gömülü C2PA deposu, ayrı bir onay penceresi olmadan Tüm Metadata’yı Kaldır veya Yalnız C2PA’yı Kaldır ile kaldırılabilir; bu depodaki üretici, telif, lisans ve Actions bilgileri de kaybolur. Hak/telif onayı gerektiren diğer metadata korunur. Harici manifestler ve piksel içi filigranlar (ör. SynthID) etkilenmez.',
+    'AI aracının adı nereden geliyor?',
+    'Dosyanın kendi C2PA veya metadata kaydından. Kayıt değiştirilmiş ya da silinmiş olabilir; kayıt yoksa araç adı gösterilemez.',
   ],
 ];
 export function HomeInformation() {
@@ -115,9 +116,9 @@ export function HomeInformation() {
         <h2>Nasıl çalışır?</h2>
         <div className="steps">
           {[
-            ['file', 'Dosyanı Seç', 'Görsel veya videonu cihazından seç.'],
-            ['scan', 'Metadata’yı İncele', 'Desteklenen metadata ve kaynak kayıtlarını gör.'],
-            ['save', 'Temizle ve Kaydet', 'Uygun kayıtları temizle, doğrulanmış çıktını al.'],
+            ['file', 'Dosyanı seç', 'Görsel veya videonu sürükle ya da seç.'],
+            ['scan', 'İncele', 'Bulunan metadata’yı ve AI aracını gör.'],
+            ['save', 'Temizle ve indir', 'Tüm Metadata’yı Kaldır’a bas, doğrulanmış dosyayı al.'],
           ].map(([kind, title, text], index) => (
             <article className="step-card" key={kind}>
               <div className="step-top">
@@ -134,18 +135,18 @@ export function HomeInformation() {
         <div>
           <h2>Dosyan cihazında kalır.</h2>
           <p>
-            Medya sunucuya yüklenmez. İşlem tarayıcıda yerel olarak yürütülür; orijinal dosya korunur. Desteklenen
-            metadata kayıtları yeniden kodlamadan temizlenebilir.
+            Dosyan sunucuya gönderilmez; tüm işlem tarayıcında yapılır. Orijinal dosyan değişmez, temizlenen kopya ayrı
+            indirilir.
           </p>
         </div>
         <div className="privacy-detail">
           <Icon />
-          <h3>Yerel işlem. Dürüst sınırlar.</h3>
+          <h3>Yerel işlem, açık sınırlar</h3>
           <p>
-            Video çıktısı için geçici yerel depolama kullanılır. Sekme veya tarayıcı kapanırsa geçici medya dosyaları
-            kalabilir. Yalnız yetkili olduğun dosyalarda kullan.
+            Videolar işlenirken tarayıcının geçici alanı kullanılır; tarayıcı çökerse geçici dosya kalabilir. Aracı
+            yalnız hakkın olan dosyalarda kullan.
           </p>
-          <a href="#technical-limits">Teknik sınırlamaları incele →</a>
+          <a href="#technical-limits">Sınırları gör →</a>
         </div>
       </section>
       <section id="faq" className="info-section faq">
@@ -167,18 +168,18 @@ export function Footer() {
         <a className="brand" href="#">
           AI Footprint <strong>Cleaner</strong>
         </a>
-        <p>Medya yüklemesi ve analytics olmadan yerel işlem.</p>
+        <p>Yükleme yok, izleme yok; işlem tarayıcında.</p>
       </div>
       <div>
         <a href="https://github.com/akarmert/ai-footprint-deleter" target="_blank" rel="noreferrer">
           GitHub ↗
         </a>
-        <a href="#technical-limits">Teknik sınırlamalar</a>
-        <span>Web v{version}</span>
+        <a href="#technical-limits">Sınırlar</a>
+        <span>v{version}</span>
       </div>
       <p className="footer-note" id="technical-limits">
-        Bütün metadata veya AI izlerinin kaldırılması garanti edilmez. Video kaydı güncel masaüstü Chrome/Edge, HTTPS
-        (veya localhost), File System Access ve yeterli geçici alan gerektirir.
+        Bütün metadata’nın veya AI izlerinin silindiği garanti edilmez. C2PA imzaları doğrulanmaz. Video kaydı masaüstü
+        Chrome veya Edge gerektirir.
       </p>
     </footer>
   );

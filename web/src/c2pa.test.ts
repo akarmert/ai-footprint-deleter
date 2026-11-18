@@ -240,7 +240,7 @@ test('numbered actions are read and duplicate manifest labels are rejected', () 
     manifest = data.subarray(8 + new DataView(data.buffer, data.byteOffset).getUint32(8));
   const result = readC2pa(wrap(superbox('c2pa', 'c2pa', manifest, manifest)), 'JPEG', true);
   assert.equal(result.status, 'unreadable');
-  assert.equal(result.reason, 'Yinelenen manifest etiketi');
+  assert.equal(result.reason, 'C2PA kaydı okunamadı (Yinelenen manifest etiketi).');
 });
 test('normal JPEG EXIF/XMP remains outside C2PA parsing', () => {
   const data = new Uint8Array(readFileSync(new URL('../tests/fixtures/image-1.jpg', import.meta.url)));

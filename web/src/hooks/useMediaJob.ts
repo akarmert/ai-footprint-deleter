@@ -86,7 +86,7 @@ export function useMediaJob(callbacks: JobCallbacks) {
     if (videoWorker.current && worker.current && busy) {
       cancelling.current = true;
       worker.current.postMessage({ type: 'cancel' });
-      setError('İptal istendi; disk kapanışı bekleniyor.');
+      setError('İptal ediliyor; dosya yazımının kapanması bekleniyor.');
       clearTimeout(timer.current);
       const active = worker.current;
       timer.current = setTimeout(() => {
@@ -94,13 +94,11 @@ export function useMediaJob(callbacks: JobCallbacks) {
         active.terminate();
         worker.current = null;
         setBusy('');
-        setError(
-          'İptal kapanışı zaman aşımına uğradı. Disk sonucu belirsiz; hedefi kontrol edin. Geçici site dosyası kalmış olabilir.',
-        );
+        setError('İptal yanıt vermedi. Kayıt yerindeki dosyayı kontrol et; geçici bir dosya kalmış olabilir.');
       }, 10000);
     } else {
       clear();
-      setError('İşlem iptal edildi; kaynak ve çıktı bellekten bırakıldı. Yeniden dosya seçin.');
+      setError('İşlem iptal edildi. Yeniden dosya seç.');
     }
   }
   function expire(active: Worker) {
@@ -110,17 +108,17 @@ export function useMediaJob(callbacks: JobCallbacks) {
       if (videoWorker.current) {
         active.postMessage({ type: 'cancel' });
         cancelling.current = true;
-        setError('Zaman aşımı; disk kapanışı bekleniyor.');
+        setError('İşlem çok uzun sürdü; durduruluyor.');
         timer.current = setTimeout(() => {
           if (worker.current !== active || committingRef.current) return;
           active.terminate();
           worker.current = null;
           setBusy('');
-          setError('Disk sonucu belirsiz; hedefi ve geçici site dosyalarını kontrol edin.');
+          setError('Kayıt sonucu belirsiz. Kayıt yerindeki dosyayı kontrol et; geçici bir dosya kalmış olabilir.');
         }, 10000);
       } else {
         clear();
-        setError('İşlem zaman aşımına uğradı. Çıktı sunulmadı.');
+        setError('İşlem çok uzun sürdü ve durduruldu; çıktı verilmedi.');
       }
     }, 120000);
   }
@@ -130,7 +128,7 @@ export function useMediaJob(callbacks: JobCallbacks) {
     clear();
     if (!list.length) return;
     if (list.length !== 1) {
-      setError('Bir seferde yalnız bir dosya seçin.');
+      setError('Bir seferde tek dosya seç.');
       return;
     }
     const source = list[0];
@@ -138,7 +136,7 @@ export function useMediaJob(callbacks: JobCallbacks) {
       const format = validateSelection(source);
       const video = format === 'MP4' || format === 'MOV';
       videoWorker.current = video;
-      if (!supported) throw new Error('Web Workers desteklenmiyor. Güncel bir tarayıcı kullanın.');
+      if (!supported) throw new Error('Bu tarayıcı desteklenmiyor. Güncel bir tarayıcı kullan.');
       callbacksRef.current.onSelected(generation.current);
       setFile(source);
       setBusy('scan');
@@ -153,12 +151,12 @@ export function useMediaJob(callbacks: JobCallbacks) {
           committingRef.current = true;
           setCommitting(true);
           clearTimeout(timer.current);
-          setError('Dosya yayınlanıyor; bu aşama iptal edilemez. Sekmeyi kapatmayın.');
+          setError('Dosya kaydediliyor; bu adım iptal edilemez. Sekmeyi kapatma.');
           timer.current = setTimeout(() => {
             if (worker.current === active && committingRef.current) {
               setUncertainCommit(true);
               setError(
-                'Disk yayınlama hâlâ bekliyor; sonuç belirsiz. Hedef dosyayı kontrol edin. Sekmeyi kapatmak geçici dosya bırakabilir.',
+                'Kayıt hâlâ sürüyor; sonucu belirsiz. Kayıt yerindeki dosyayı kontrol et. Sekmeyi kapatırsan geçici bir dosya kalabilir.',
               );
             }
           }, 120000);
@@ -175,7 +173,7 @@ export function useMediaJob(callbacks: JobCallbacks) {
         else if (data.type !== 'error') setError('');
         if (data.type === 'cancelled') {
           clear();
-          setError(data.cleanupWarning || 'İşlem iptal edildi; disk yazımı tamamlanmadı.');
+          setError(data.cleanupWarning || 'İşlem iptal edildi; dosya kaydedilmedi.');
           return;
         }
         if (data.type === 'scan') {
@@ -213,12 +211,12 @@ export function useMediaJob(callbacks: JobCallbacks) {
         clear();
         setError(
           videoFailure
-            ? `${message} Disk sonucu belirsiz; hedefi kontrol edin. Geçici site dosyası kalmış olabilir.`
-            : `${message} Çıktı sunulmadı.`,
+            ? `${message} Kayıt yerindeki dosyayı kontrol et; geçici bir dosya kalmış olabilir.`
+            : `${message} Çıktı verilmedi.`,
         );
       };
-      active.onerror = () => workerFailure('Worker çalıştırılamadı.');
-      active.onmessageerror = () => workerFailure('Worker yanıtı okunamadı.');
+      active.onerror = () => workerFailure('İşlem başlatılamadı.');
+      active.onmessageerror = () => workerFailure('İşlem yanıtı okunamadı.');
       expire(active);
       active.postMessage({ type: 'scan', file: source, ...(video ? { format } : {}) });
     } catch (cause) {
@@ -251,9 +249,7 @@ export function useMediaJob(callbacks: JobCallbacks) {
     committingRef.current = false;
     setCommitting(false);
     clear();
-    setError(
-      'Disk sonucu belirsiz olarak izleme bırakıldı; bu iptal/geri alma garantisi değildir. Hedefi kontrol edin ve geçici site verilerini temizleyin.',
-    );
+    setError('Kayıt takibi bırakıldı; bu, işlemin geri alındığı anlamına gelmez. Kayıt yerindeki dosyayı kontrol et.');
   }
   /** Offers the verified output under `name`; the previous object URL is revoked. */
   function downloadBlob(blob: Blob, name: string) {

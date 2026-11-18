@@ -889,8 +889,8 @@ test('metadata in a secondary MPF image is reported as retained and keeps the re
   const data = mpfFile(fixture('image-1.jpg'), [gain]);
   const scan = scanImage(data);
   assert.equal(scan.footprints?.incomplete, true);
-  assert.match(scan.records.find(r => r.kind === 'MPF')!.reason, /ikincil görüntülerde/);
-  assert.ok(scan.notes.some(n => /İkincil görüntülerde EXIF/.test(n)));
+  assert.match(scan.records.find(r => r.kind === 'MPF')!.reason, /ek görüntülerdeki EXIF/);
+  assert.ok(scan.notes.some(n => /Ek görüntülerde EXIF/.test(n)));
   const ids = scan.records.filter(r => r.requiresRightsConsent).map(r => r.id);
   const result = await cleanImage(data, ids, true);
   assertMpfConsistent(result.data, [gain]);
