@@ -2,14 +2,15 @@ import type { MediaScan } from './protocol';
 import type { MetadataRecord } from './engine';
 import { AI_DIGITAL_SOURCE_TERM_PATTERN, AI_DIGITAL_SOURCE_TYPE_URI_PATTERN } from './ai-source-types.ts';
 import { describeAiTools, detectAiTools } from './ai-generator.ts';
+import { formatBytes } from './app-state.ts';
 
 export const categories = [
-  { id: 'c2pa', label: 'C2PA / Kaynak Bilgisi', title: 'C2PA / Kaynak Bilgisi' },
-  { id: 'file', label: 'Dosya Bilgileri', title: 'Dosya Bilgileri' },
-  { id: 'other', label: 'Diğer Metadata', title: 'Diğer Metadata' },
-  { id: 'privacy', label: 'Gizlilik Verileri', title: 'Gizlilik Verileri' },
-  { id: 'color', label: 'Renk Profili', title: 'Renk Profili' },
-  { id: 'production', label: 'AI / Üretim Beyanları', title: 'AI / Üretim Beyanları' },
+  { id: 'c2pa', label: 'C2PA kaydı' },
+  { id: 'file', label: 'Dosya bilgileri' },
+  { id: 'other', label: 'Diğer metadata' },
+  { id: 'privacy', label: 'Kişisel veriler' },
+  { id: 'color', label: 'Renk profili' },
+  { id: 'production', label: 'AI ve üretim bilgisi' },
 ] as const;
 export type Category = (typeof categories)[number]['id'];
 export type ResultField = {
@@ -46,17 +47,17 @@ export function describeResults(scan: MediaScan, file: { name: string; size: num
   const add = (id: string, label: string, value: string, category: Category) =>
     fields.push({ id, label, value, category, ai: false });
   add('name', 'Dosya adı', file.name, 'file');
-  add('size', 'Dosya boyutu', `${file.size.toLocaleString('tr-TR')} bayt`, 'file');
+  add('size', 'Dosya boyutu', formatBytes(file.size), 'file');
   add('format', 'File Type', scan.format, 'file');
-  add('dimensions', 'Image Size / Width × Height', `${scan.width} × ${scan.height}`, 'file');
+  add('dimensions', 'Image Size', `${scan.width} × ${scan.height}`, 'file');
   add(
     'megapixels',
     'Megapixels',
     ((scan.width * scan.height) / 1000000).toLocaleString('tr-TR', { maximumFractionDigits: 3 }),
     'file',
   );
-  add('orientation', 'Yön', scan.orientation === null ? 'Bilinmiyor' : String(scan.orientation), 'file');
-  add('alpha', 'Alpha', scan.alpha ? 'Var' : 'Yok', 'file');
+  add('orientation', 'Yön (EXIF)', scan.orientation === null ? 'Belirsiz' : String(scan.orientation), 'file');
+  add('alpha', 'Saydamlık', scan.alpha ? 'Var' : 'Yok', 'file');
   const tools = describeAiTools(detectAiTools(scan));
   fields.push({
     id: 'ai-tool',
@@ -65,7 +66,7 @@ export function describeResults(scan: MediaScan, file: { name: string; size: num
     category: 'file',
     ai: tools.found,
   });
-  if (provenance) add('c2pa-status', 'C2PA Status', scan.c2pa, 'c2pa');
+  if (provenance) add('c2pa-status', 'C2PA Status', 'Var, doğrulanmadı', 'c2pa');
   for (const record of scan.records) {
     const value = record.preview;
     const structural = 'footprints' in scan ? scan.footprints : undefined;

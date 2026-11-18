@@ -33,14 +33,11 @@ export function readC2pa(
   if (format !== 'JPEG' && format !== 'PNG' && format !== 'WebP')
     return report(
       detected ? 'unsupported' : 'absent',
-      detected
-        ? 'Bu kapsayıcı için C2PA okuma desteklenmiyor.'
-        : 'Desteklenen C2PA kaydı algılanmadı; yokluk garantisi değildir.',
+      detected ? 'Bu dosya türünde C2PA okunamıyor.' : 'C2PA kaydı bulunmadı; bu, yokluk kanıtı değildir.',
     );
   // PNG/WebP store detection is authoritative in the engine; do not re-parse (and possibly report
   // "unreadable") a file in which no top-level C2PA chunk was detected.
-  if (!detected && format !== 'JPEG')
-    return report('absent', 'Desteklenen C2PA kaydı algılanmadı; yokluk garantisi değildir.');
+  if (!detected && format !== 'JPEG') return report('absent', 'C2PA kaydı bulunmadı; bu, yokluk kanıtı değildir.');
   const deadline = now() + 250;
   let operations = 0,
     boxes = 0;
@@ -54,7 +51,7 @@ export function readC2pa(
     if (!joined)
       return report(
         detected ? 'unreadable' : 'absent',
-        detected ? 'C2PA / provenance çözümlenemedi.' : 'Gömülü C2PA deposu bulunamadı; yokluk garantisi değildir.',
+        detected ? 'C2PA kaydı okunamadı.' : 'Gömülü C2PA kaydı yok; bu, yokluk kanıtı değildir.',
       );
     const parse = (bytes: Uint8Array, depth: number): Box[] => {
       if (depth > 12) fail('JUMBF derinlik sınırı');
@@ -162,11 +159,11 @@ export function readC2pa(
     }
     return report(
       'readable-unverified',
-      `Desteklenen ${format} C2PA alanları okundu. İmza, assertion bağlantıları, trust ve içerik hash doğrulanmadı; bunlar doğrulanmamış kaynak beyanlarıdır.`,
+      `${format} dosyasındaki C2PA kaydı okundu. İmza ve içerik hash’i doğrulanmadı; bilgiler doğrulanmamış beyandır.`,
       manifests,
     );
   } catch (error) {
-    return report('unreadable', error instanceof Error ? error.message : 'C2PA çözümlenemedi');
+    return report('unreadable', `C2PA kaydı okunamadı${error instanceof Error ? ` (${error.message})` : ''}.`);
   }
 }
 

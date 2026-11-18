@@ -77,9 +77,9 @@ async function parseVideo(file: Blob, format: 'MP4' | 'MOV', check?: () => void)
     c2pa: 'not-detected-not-guaranteed',
     cleaningBlocked: false,
     notes: [
-      'Yalnız dar, bağımsız ve parçalanmamış ISO BMFF/QuickTime alt kümesi desteklenir; codec çözülmez.',
-      'C2PA imzası doğrulanmaz; algılanmaması yokluk garantisi değildir.',
-      'Temizleme kutu boyutunu ve tüm medya/ofset/tablo baytlarını korur; tüm kişisel verilerin kaldırılması garanti edilmez.',
+      'Yalnız yaygın MP4/MOV yapıları desteklenir; görüntü ve ses çözülmez.',
+      'C2PA imzası doğrulanmaz; kayıt bulunmaması yokluk kanıtı değildir.',
+      'Metadata alanları aynı boyutta boşaltılır; görüntü ve ses verisi değişmez. Tüm kişisel bilgilerin silindiği garanti edilmez.',
     ],
   };
   const patches = new Map<string, Patch[]>();
@@ -104,8 +104,8 @@ async function parseVideo(file: Blob, format: 'MP4' | 'MOV', check?: () => void)
       preview: preview.slice(0, 512),
       status: rights ? 'protected' : 'cleanable',
       reason: rights
-        ? 'Telif/yetki onayı gerektirir; bilinen metadata kutusu'
-        : 'Yalnız oluşturma/değiştirme zamanları sıfırlanır',
+        ? 'Bilinen metadata kutusu; telif veya yazar bilgisi içerebilir.'
+        : 'Yalnız oluşturma ve değiştirme tarihleri sıfırlanır.',
       requiresRightsConsent: rights,
     });
     patches.set(id, replacements);
@@ -131,19 +131,19 @@ async function parseVideo(file: Blob, format: 'MP4' | 'MOV', check?: () => void)
     let content = bytes;
     if (box.children.length) {
       if (box.children.length !== 1 || box.children[0]!.type !== 'data') {
-        unsupported(box, 'Metadata data child layout', true);
+        unsupported(box, 'Metadata yapısı desteklenmiyor.', true);
         return;
       }
       const data = box.children[0]!,
         offset = data.payload - box.payload;
       if (data.end - data.payload < 8 || u32(bytes, offset) !== 1 || u32(bytes, offset + 4) !== 0) {
-        unsupported(box, 'Metadata encoding/locale unsupported', true);
+        unsupported(box, 'Metadata kodlaması desteklenmiyor.', true);
         return;
       }
       content = bytes.subarray(offset + 8);
     } else if (format === 'MOV' && box.type.startsWith('©')) {
       if (bytes.length < 4 || bytes[0]! * 256 + bytes[1]! !== bytes.length - 4) {
-        unsupported(box, 'QuickTime metadata layout', true);
+        unsupported(box, 'QuickTime metadata yapısı desteklenmiyor.', true);
         return;
       }
       content = bytes.subarray(4);
@@ -151,11 +151,11 @@ async function parseVideo(file: Blob, format: 'MP4' | 'MOV', check?: () => void)
     try {
       text = textDecoder.decode(content);
     } catch {
-      unsupported(box, 'Metadata UTF-8 dışı/belirsiz provenance', true);
+      unsupported(box, 'Metadata metni okunamadı.', true);
       return;
     }
     if (/c2pa|jumbf|content.?credentials|manifest.?store|provenance/i.test(text.replace(/\0/g, ''))) {
-      unsupported(box, 'Provenance metadata; tüm temizlik engellendi', true);
+      unsupported(box, 'Kaynak kaydı içeriyor; dosya temizlenmez.', true);
       return;
     }
     record(
@@ -228,9 +228,9 @@ async function parseVideo(file: Blob, format: 'MP4' | 'MOV', check?: () => void)
       const box: Box = { type, start, payload: start + headerSize, end: start + size, children: [] };
       result.push(box);
       if (type === 'uuid' || ['jumb', 'c2pa', 'C2PA'].includes(type))
-        unsupported(box, 'UUID/C2PA/opaque provenance; tüm temizlik engellendi', true);
+        unsupported(box, 'UUID/C2PA kutusu veya kaynak kaydı; dosya temizlenmez.', true);
       else if (!lists[context]?.includes(type))
-        unsupported(box, `Desteklenmeyen ${context}/${type}; tüm temizlik engellendi`, true);
+        unsupported(box, `Desteklenmeyen ${context}/${type} kutusu; dosya temizlenmez.`, true);
       else if (type === 'free' || type === 'skip' || type === 'wide') {
         for (let p = box.payload; p < box.end; p += CHUNK) {
           if ((await read(p, Math.min(CHUNK, box.end - p))).some(v => v !== 0)) {
@@ -242,7 +242,7 @@ async function parseVideo(file: Blob, format: 'MP4' | 'MOV', check?: () => void)
         let childStart = box.payload;
         if (type === 'meta') {
           if (box.end - childStart < 4 || u32(await read(childStart, 4)) !== 0) {
-            unsupported(box, 'QuickTime meta varyantı desteklenmiyor', true);
+            unsupported(box, 'Bu QuickTime meta yapısı desteklenmiyor.', true);
             start = box.end;
             continue;
           }
@@ -252,11 +252,11 @@ async function parseVideo(file: Blob, format: 'MP4' | 'MOV', check?: () => void)
         if (type === 'meta') {
           const handlers = box.children.filter(b => b.type === 'hdlr');
           if (handlers.length !== 1 || box.children.filter(b => b.type === 'ilst').length !== 1)
-            unsupported(box, 'Metadata handler/list layout', true);
+            unsupported(box, 'Metadata yapısı desteklenmiyor.', true);
           else {
             const handler = handlers[0]!,
               length = handler.end - handler.payload;
-            if (length < 24 || length > 256) unsupported(box, 'Metadata handler bounds', true);
+            if (length < 24 || length > 256) unsupported(box, 'Metadata yapısı desteklenmiyor.', true);
             else {
               const data = await read(handler.payload, length);
               if (
@@ -266,7 +266,7 @@ async function parseVideo(file: Blob, format: 'MP4' | 'MOV', check?: () => void)
                 !['appl', '\0\0\0\0'].includes(fourcc(data, 12)) ||
                 data.subarray(16).some(v => v !== 0)
               )
-                unsupported(box, 'Opaque metadata handler/provenance', true);
+                unsupported(box, 'Tanınmayan metadata yapısı veya kaynak kaydı; dosya temizlenmez.', true);
             }
           }
         }
@@ -338,7 +338,7 @@ async function parseVideo(file: Blob, format: 'MP4' | 'MOV', check?: () => void)
     const handler = one(mdia.children, 'hdlr');
     const hd = await full(handler, 24);
     const handlerType = fourcc(hd, 8);
-    if (handlerType !== 'vide' && handlerType !== 'soun') block('Yalnız video/audio track desteklenir');
+    if (handlerType !== 'vide' && handlerType !== 'soun') block('Yalnız görüntü ve ses izleri desteklenir.');
     if (handler.end - handler.payload > 1024) fail('handler name budget');
     const name = await read(handler.payload + 24, handler.end - handler.payload - 24);
     const handlerName = format === 'MOV' && name.length && name[0] === name.length - 1 ? name.subarray(1) : name;
@@ -346,7 +346,7 @@ async function parseVideo(file: Blob, format: 'MP4' | 'MOV', check?: () => void)
       handlerName.some(v => v !== 0) &&
       !/^(VideoHandler|SoundHandler|Core Media Video|Core Media Audio)\0*$/.test(new TextDecoder().decode(handlerName))
     )
-      block('Özel handler adı korunur; belirsiz metadata');
+      block('Özel iz adı; korunur.');
     if (handlerType === 'vide') {
       videoTracks++;
       scan.width = u32(tk, tk.length - 8) / 65536;
@@ -369,7 +369,7 @@ async function parseVideo(file: Blob, format: 'MP4' | 'MOV', check?: () => void)
       ];
       const rotation = rotations.findIndex(r => r.every((value, i) => i === 6 || i === 7 || value === values[i]));
       scan.orientation = rotation < 0 ? null : [1, 6, 3, 8][rotation]!;
-      if (rotation < 0) block('Özel track dönüşüm matrisi desteklenmiyor');
+      if (rotation < 0) block('Döndürülmüş veya dönüştürülmüş video izi desteklenmiyor.');
     }
     const minf = one(mdia.children, 'minf');
     const mediaHeader = one(minf.children, handlerType === 'vide' ? 'vmhd' : 'smhd');
@@ -676,7 +676,7 @@ async function parseVideo(file: Blob, format: 'MP4' | 'MOV', check?: () => void)
       if (count > 16 || elst.end - elst.payload !== 8 + count * width) fail('edit list bounds');
     }
   }
-  if (videoTracks !== 1) block('Tam bir video track gereklidir');
+  if (videoTracks !== 1) block('Dosyada tam bir video izi yok.');
   return { scan, patches };
 }
 

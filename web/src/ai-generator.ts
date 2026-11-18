@@ -148,13 +148,12 @@ export function describeAiTools(summary: AiToolSummary): { headline: string; det
     return aiDeclared
       ? {
           headline: 'Belirtilmemiş',
-          detail: 'Dosyada AI üretim beyanı var ama araç adı yazılmamış. Doğrulanmamış beyan.',
+          detail: 'Dosyada AI üretim beyanı var ama araç adı yazmıyor. Beyan doğrulanmamıştır.',
           found: false,
         }
       : {
           headline: 'Dosyada belirtilmemiş',
-          detail:
-            'Metadata/C2PA kayıtlarında AI aracı adı bulunamadı. Bu, görselin AI ile üretilmediği anlamına gelmez.',
+          detail: 'Metadata’da veya C2PA kaydında AI aracı adı yok. Bu, AI ile üretilmediği anlamına gelmez.',
           found: false,
         };
   const headline = [...new Set(claims.map(c => c.tool))].join(' · ');

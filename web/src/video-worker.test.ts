@@ -191,7 +191,7 @@ test('staging quota error aborts, cleans and never opens destination', async () 
   const { calls, messages } = await harness('stage-quota');
   assert.deepEqual(calls, ['estimate', 'stage-write', 'stage-abort', 'remove-stage']);
   assert.equal(messages.at(-1).type, 'error');
-  assert.match(messages.at(-1).message, /kotası/);
+  assert.match(messages.at(-1).message, /depolama alanı doldu/);
 });
 test('video Worker verification rejection never opens destination', async () => {
   const { calls, messages } = await harness('verify-fail');

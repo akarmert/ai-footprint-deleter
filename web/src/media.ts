@@ -18,11 +18,11 @@ const extensions: Record<string, Format> = {
 export function validateSelection(file: Pick<File, 'name' | 'size'>): Format {
   const extension = file.name.split('.').pop()?.toLowerCase() ?? '';
   const format = Object.hasOwn(extensions, extension) ? extensions[extension] : undefined;
-  if (!format) throw new Error('Desteklenmeyen format. JPEG, PNG, WebP, MP4 veya MOV seçin.');
-  if (file.size === 0) throw new Error('Boş dosya açılamaz.');
+  if (!format) throw new Error('Bu dosya türü desteklenmiyor. JPEG, PNG, WebP, MP4 veya MOV seç.');
+  if (file.size === 0) throw new Error('Dosya boş.');
   const video = format === 'MP4' || format === 'MOV';
   if (file.size > (video ? VIDEO_LIMIT : IMAGE_LIMIT))
-    throw new Error(video ? 'Video sınırı 1 GB (1.000.000.000 bayt).' : 'Görsel sınırı 128 MiB.');
+    throw new Error(video ? 'Video en fazla 1 GB olabilir.' : 'Görsel en fazla 128 MiB olabilir.');
   return format;
 }
 export async function readRange(blob: Blob, start: number, length: number): Promise<Uint8Array> {
@@ -52,6 +52,6 @@ export async function inspect(file: File): Promise<Inspection> {
   const format = validateSelection(file);
   const header = await readRange(file, 0, READ_CHUNK);
   if (!detectHeader(header, format))
-    throw new Error('Dosya başlığı uzantıyla uyuşmuyor veya bu kapsayıcı desteklenmiyor.');
+    throw new Error('Dosyanın içeriği uzantısıyla uyuşmuyor ya da bu biçim desteklenmiyor.');
   return { format, bytesRead: header.byteLength, scope: 'header-only' };
 }
