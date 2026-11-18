@@ -291,8 +291,10 @@ function App() {
       setError(cause instanceof Error ? cause.message : 'Dosya seçilemedi.');
     }
   }
-  const { eligible, needsConsent, c2paRemovable, imageScan, footprintPlan, directRemovable, allMetadataRemovable } =
-    deriveActions(scan, mode);
+  const { eligible, needsConsent, c2paRemovable, imageScan, footprintPlan, allMetadataRemovable } = deriveActions(
+    scan,
+    mode,
+  );
   const confirming = pendingConsent;
   function requestAllMetadata() {
     if (
@@ -314,27 +316,6 @@ function App() {
     setBusy('clean');
     expire(worker.current);
     worker.current.postMessage({ type: 'clean-all-metadata' });
-  }
-  function requestFootprints() {
-    if (
-      !directRemovable ||
-      !worker.current ||
-      busy ||
-      saving ||
-      committing ||
-      operation.current ||
-      output ||
-      footprintResult
-    )
-      return;
-    operation.current = 'clean';
-    revoke();
-    setOutput(undefined);
-    setFootprintResult(undefined);
-    setError('');
-    setBusy('clean');
-    expire(worker.current);
-    worker.current.postMessage({ type: 'clean-footprints', c2paConsent: true, rightsConsent: false });
   }
   function removeC2pa() {
     if (!c2paRemovable || !worker.current || busy || saving || committing || operation.current || output) return;
@@ -514,22 +495,6 @@ function App() {
                     <div className="actions">
                       <button
                         className="primary"
-                        id="remove-footprints"
-                        onClick={requestFootprints}
-                        disabled={
-                          !directRemovable ||
-                          !!busy ||
-                          saving ||
-                          committing ||
-                          confirming ||
-                          !!output ||
-                          !!footprintResult
-                        }
-                      >
-                        Remove AI Footprint
-                      </button>
-                      <button
-                        className="primary"
                         id="remove-all-metadata"
                         onClick={requestAllMetadata}
                         aria-describedby="all-metadata-scope-note"
@@ -547,9 +512,9 @@ function App() {
                       </button>
                     </div>
                     <p className="scan-note" id="all-metadata-scope-note">
-                      Tüm Metadata'yı Kaldır: C2PA kaynak kaydı ile birlikte EXIF (konum, cihaz, tarih), XMP, IPTC,
-                      yorumlar ve PNG metinleri tek seferde silinir; telif/yazar bilgileri de gider. Renk profili (ICC)
-                      ve görüntü yönünü taşıyan EXIF görüntünün doğru görünmesi için korunur.
+                      AI kaynak kaydı (C2PA) ve AI beyanları dahil EXIF (konum, cihaz, tarih), XMP, IPTC, yorumlar ve
+                      PNG metinleri tek seferde silinir; telif/yazar bilgileri de gider. Renk profili (ICC) ve görüntü
+                      yönünü taşıyan EXIF görüntünün doğru görünmesi için korunur.
                     </p>
                     <p className="scan-note">
                       Yalnız desteklenen metadata kapsanır; piksel ve görünmez filigran analizi yapılmaz. Kaynak dosya

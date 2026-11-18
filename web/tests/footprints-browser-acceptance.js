@@ -67,7 +67,7 @@ async page => {
       };
     });
     await page.goto('http://localhost:3000');
-    const remove = page.locator('#remove-footprints');
+    const remove = page.locator('#remove-all-metadata');
     const download = page.getByRole('button', { name: 'Download', exact: true });
     const noConsentUI = async () => {
       assert((await page.locator('dialog[open]').count()) === 0, 'Direct action opened a dialog');

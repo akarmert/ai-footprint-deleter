@@ -105,7 +105,7 @@ const questions = [
   ],
   [
     'C2PA kayıtları doğrulanıyor mu?',
-    'Web sürümü kriptografik imza, trust veya içerik hash doğrulaması yapmaz. Okunabilen alanlar doğrulanmamış kaynak beyanıdır. Mevcut veya belirsiz provenance metadata temizliğini engeller. Desteklenen JPEG/PNG/WebP dosyalarında üst düzey gömülü C2PA deposu, ayrı bir onay penceresi olmadan Remove AI Footprint veya Yalnız C2PA’yı Kaldır ile kaldırılabilir; bu depodaki üretici, telif, lisans ve Actions bilgileri de kaybolur. Hak/telif onayı gerektiren diğer metadata korunur. Harici manifestler ve piksel içi filigranlar (ör. SynthID) etkilenmez.',
+    'Web sürümü kriptografik imza, trust veya içerik hash doğrulaması yapmaz. Okunabilen alanlar doğrulanmamış kaynak beyanıdır. Mevcut veya belirsiz provenance metadata temizliğini engeller. Desteklenen JPEG/PNG/WebP dosyalarında üst düzey gömülü C2PA deposu, ayrı bir onay penceresi olmadan Tüm Metadata’yı Kaldır veya Yalnız C2PA’yı Kaldır ile kaldırılabilir; bu depodaki üretici, telif, lisans ve Actions bilgileri de kaybolur. Hak/telif onayı gerektiren diğer metadata korunur. Harici manifestler ve piksel içi filigranlar (ör. SynthID) etkilenmez.',
   ],
 ];
 export function HomeInformation() {
