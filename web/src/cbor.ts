@@ -28,6 +28,14 @@ export function decodeCbor(bytes: Uint8Array, check: () => void): CborValue {
       return fail();
     }
     const length = integer(info);
+    if (major === 6) {
+      // Only RFC 8949 date/time tags are accepted (C2PA action "when" fields): tag 0 wraps an
+      // RFC 3339 text string, tag 1 an integer epoch. The tag is dropped; any other tag fails closed.
+      if (length !== 0 && length !== 1) fail();
+      const value = item(depth + 1);
+      if (length === 0 ? typeof value !== 'string' : typeof value !== 'number') fail();
+      return value;
+    }
     if (major === 0) return length;
     if (major === 1) {
       if (length >= Number.MAX_SAFE_INTEGER) fail();
