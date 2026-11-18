@@ -127,7 +127,7 @@ async function parseVideo(file: Blob, format: 'MP4' | 'MOV', check?: () => void)
     metadataBytes += length;
     if (metadataBytes > MAX_METADATA || length > CHUNK) fail('metadata budget');
     const bytes = await read(box.payload, length);
-    let text = '';
+    let text: string;
     let content = bytes;
     if (box.children.length) {
       if (box.children.length !== 1 || box.children[0]!.type !== 'data') {

@@ -7,7 +7,7 @@ async page => {
       if (!condition) throw new Error(message);
     };
     // Optional AFC_SCREENSHOT_DIR: where to save the after-audit screenshots (skipped when unset).
-    const screenshotDir = globalThis.process?.env?.AFC_SCREENSHOT_DIR?.replace(/[\/]+$/, '');
+    const screenshotDir = globalThis.process?.env?.AFC_SCREENSHOT_DIR?.replace(/[\\/]+$/, '');
     // The browser tool provides Playwright Library, not Playwright Test's expect.
     const toBeVisible = async locator => {
       await locator.waitFor({ state: 'visible' });

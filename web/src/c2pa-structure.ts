@@ -5,7 +5,7 @@ const CLAIM_UUID = '6332636c00110010800000aa00389b71';
 export type C2paStoreIndex = { targets: string[] };
 const isClaimLabel = (label: string) => label === 'c2pa.claim' || label === 'c2pa.claim.v2';
 const isPathLabel = (label: string) =>
-  label.length > 0 && label !== '.' && !/[\/\\%?#\s\u0000-\u001f\u007f]/u.test(label) && !label.includes('..');
+  label.length > 0 && label !== '.' && !/[/\\%?#\s\u0000-\u001f\u007f]/u.test(label) && !label.includes('..');
 
 export function resolveLocalC2paReference(value: string, index: C2paStoreIndex): boolean {
   const prefix = 'self#jumbf=';

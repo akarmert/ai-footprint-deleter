@@ -4,7 +4,7 @@ async page => {
   const env = name => {
     const value = globalThis.process?.env?.[name];
     if (!value) throw new Error(`Set ${name} (see web/README.md) before running this acceptance script`);
-    return value.replace(/[\/]+$/, '');
+    return value.replace(/[\\/]+$/, '');
   };
   const assert = (value, message) => {
     if (!value) throw new Error(message);

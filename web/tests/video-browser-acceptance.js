@@ -10,7 +10,7 @@ async page => {
     const env = name => {
       const value = globalThis.process?.env?.[name];
       if (!value) throw new Error(`Set ${name} (see web/README.md) before running this acceptance script`);
-      return value.replace(/[\/]+$/, '');
+      return value.replace(/[\\/]+$/, '');
     };
     const fixture = env('AFC_VIDEO_FIXTURE');
     const assert = (value, message) => {

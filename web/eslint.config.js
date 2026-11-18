@@ -15,6 +15,8 @@ export default tseslint.config(
     languageOptions: { globals: { ...globals.browser, ...globals.worker } },
     plugins: { 'react-hooks': reactHooks },
     rules: {
+      // Control characters are matched on purpose: previews, file names and labels are sanitized.
+      'no-control-regex': 'off',
       'react-hooks/rules-of-hooks': 'error',
       'react-hooks/exhaustive-deps': 'warn',
       '@typescript-eslint/no-unused-vars': [
@@ -32,6 +34,7 @@ export default tseslint.config(
     // Static server, its test and the Node-side fixture harness.
     files: ['*.{js,mjs}', 'tests/**/*.mjs'],
     languageOptions: { globals: { ...globals.node } },
+    rules: { 'no-control-regex': 'off' },
   },
   {
     // Playwright browser_run_code functions: a single arrow-function expression with `page`,

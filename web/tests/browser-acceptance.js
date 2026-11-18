@@ -8,7 +8,7 @@ async page => {
     const env = name => {
       const value = globalThis.process?.env?.[name];
       if (!value) throw new Error(`Set ${name} (see web/README.md) before running this acceptance script`);
-      return value.replace(/[\/]+$/, '');
+      return value.replace(/[\\/]+$/, '');
     };
     const root = env('AFC_FIXTURES_DIR');
     const assert = (condition, message) => {
