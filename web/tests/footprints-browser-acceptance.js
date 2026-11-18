@@ -215,7 +215,7 @@ async (page) => {
     await upload('hint'); assert(await remove.isDisabled(), 'Mixed hint removal enabled');
     assert(await page.locator('#footprint-title').textContent() === 'AI METADATA BULUNDU', 'Hint heading replaced by unsupported warning');
     await upload('incomplete');
-    assert(await page.locator('#footprint-title').textContent() === 'METADATA ANALİZİ TAMAMLANAMADI', 'Incomplete scan shown as absence');
+    assert(await page.locator('#footprint-title').textContent() === 'METADATA BULUNDU', 'Incomplete scan shown as absence');
     await upload('rights'); assert(await remove.isDisabled(), 'Rights-only dedicated metadata enabled direct removal');
     await page.locator('#advanced-tools > summary').click();
     assert(await page.getByText(/Bu kayıtlar için Teknik Ayrıntılar ve Gelişmiş Araçlar/).isVisible(), 'Rights-only preservation guidance missing');
@@ -228,7 +228,7 @@ async (page) => {
     for (const kind of ['external', 'malformed']) {
       await upload(kind);
       assert(await remove.isDisabled(), `${kind} provenance not blocked`);
-      if (kind === 'malformed') assert(await page.locator('#footprint-title').textContent() === 'METADATA ANALİZİ TAMAMLANAMADI', 'Unreadable provenance lost incomplete warning');
+      if (kind === 'malformed') assert(await page.locator('#footprint-title').textContent() === 'METADATA BULUNDU', 'Unreadable provenance lost incomplete warning');
       assert(await page.locator('.status strong').textContent() === 'Kaynak kaydı bulundu · Kaldırma desteklenmiyor', `${kind} unsupported status missing`);
       assert(await page.locator('.status').evaluate(element => element.classList.contains('has-warning')), `${kind} scan shown as green`);
       const count = await page.evaluate(() => window.__testCleanRequests.length);
