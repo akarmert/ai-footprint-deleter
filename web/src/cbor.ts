@@ -1,11 +1,16 @@
 export type CborValue = null | boolean | number | string | Uint8Array | CborValue[] | Map<string | number, CborValue>;
 
 export function decodeCbor(bytes: Uint8Array, check: () => void): CborValue {
-  let offset = 0, nodes = 0;
-  const fail = (): never => { throw new Error('Desteklenmeyen veya bozuk CBOR'); };
+  let offset = 0,
+    nodes = 0;
+  const fail = (): never => {
+    throw new Error('Desteklenmeyen veya bozuk CBOR');
+  };
   const take = (count: number) => {
     if (!Number.isSafeInteger(count) || count < 0 || count > bytes.length - offset) fail();
-    const start = offset; offset += count; return start;
+    const start = offset;
+    offset += count;
+    return start;
   };
   const integer = (info: number): number => {
     if (info < 24) return info;
@@ -20,7 +25,9 @@ export function decodeCbor(bytes: Uint8Array, check: () => void): CborValue {
   const item = (depth: number): CborValue => {
     check();
     if (depth > 20 || ++nodes > 20000) throw new Error('CBOR derinlik/öğe sınırı');
-    const initial = bytes[take(1)], major = initial >> 5, info = initial & 31;
+    const initial = bytes[take(1)],
+      major = initial >> 5,
+      info = initial & 31;
     if (major === 7) {
       if (info === 20) return false;
       if (info === 21) return true;
@@ -43,7 +50,8 @@ export function decodeCbor(bytes: Uint8Array, check: () => void): CborValue {
     }
     if (major === 2 || major === 3) {
       if (length > 262144) throw new Error('CBOR metin/bayt sınırı');
-      const start = take(length), value = bytes.subarray(start, offset);
+      const start = take(length),
+        value = bytes.subarray(start, offset);
       return major === 2 ? value : new TextDecoder('utf-8', { fatal: true }).decode(value);
     }
     if (major === 4) {

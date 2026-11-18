@@ -5,18 +5,32 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const defaultRoot = fileURLToPath(new URL('./dist/', import.meta.url));
-const types = new Map(Object.entries({
-  '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
-  '.mjs': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
-  '.json': 'application/json; charset=utf-8', '.svg': 'image/svg+xml',
-  '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
-  '.webp': 'image/webp', '.gif': 'image/gif', '.ico': 'image/x-icon',
-  '.woff': 'font/woff', '.woff2': 'font/woff2', '.ttf': 'font/ttf',
-  '.wasm': 'application/wasm', '.txt': 'text/plain; charset=utf-8',
-  '.webmanifest': 'application/manifest+json', '.avif': 'image/avif',
-}));
+const types = new Map(
+  Object.entries({
+    '.html': 'text/html; charset=utf-8',
+    '.js': 'text/javascript; charset=utf-8',
+    '.mjs': 'text/javascript; charset=utf-8',
+    '.css': 'text/css; charset=utf-8',
+    '.json': 'application/json; charset=utf-8',
+    '.svg': 'image/svg+xml',
+    '.png': 'image/png',
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.webp': 'image/webp',
+    '.gif': 'image/gif',
+    '.ico': 'image/x-icon',
+    '.woff': 'font/woff',
+    '.woff2': 'font/woff2',
+    '.ttf': 'font/ttf',
+    '.wasm': 'application/wasm',
+    '.txt': 'text/plain; charset=utf-8',
+    '.webmanifest': 'application/manifest+json',
+    '.avif': 'image/avif',
+  }),
+);
 const headers = {
-  'Content-Security-Policy': "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' blob: data:; media-src 'self' blob:; font-src 'self'; connect-src 'none'; worker-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'",
+  'Content-Security-Policy':
+    "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' blob: data:; media-src 'self' blob:; font-src 'self'; connect-src 'none'; worker-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'",
   'X-Content-Type-Options': 'nosniff',
   'X-Frame-Options': 'DENY',
   'Referrer-Policy': 'no-referrer',
@@ -29,14 +43,14 @@ const headers = {
 
 async function openAsset(root, segments) {
   const rootInfo = await lstat(root);
-  if (!rootInfo.isDirectory() || rootInfo.isSymbolicLink() || await realpath(root) !== root) return null;
+  if (!rootInfo.isDirectory() || rootInfo.isSymbolicLink() || (await realpath(root)) !== root) return null;
   let candidate = root;
   for (const [index, segment] of segments.entries()) {
     candidate = path.join(candidate, segment);
     const info = await lstat(candidate);
     if (info.isSymbolicLink() || (index === segments.length - 1 ? !info.isFile() : !info.isDirectory())) return null;
   }
-  if (await realpath(candidate) !== candidate) return null;
+  if ((await realpath(candidate)) !== candidate) return null;
   const handle = await open(candidate, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
   const info = await handle.stat();
   if (!info.isFile()) {
@@ -71,7 +85,11 @@ export function createStaticServer({ distDir = defaultRoot } = {}) {
       return;
     }
     const segments = pathname.split('/').filter(Boolean);
-    if (segments.some(segment => segment.startsWith('.') || segment.endsWith('.') || segment.endsWith(' ') || segment.includes(':'))) {
+    if (
+      segments.some(
+        segment => segment.startsWith('.') || segment.endsWith('.') || segment.endsWith(' ') || segment.includes(':'),
+      )
+    ) {
       reply(404, 'Not found\n');
       return;
     }
@@ -87,15 +105,26 @@ export function createStaticServer({ distDir = defaultRoot } = {}) {
         reply(500, 'Internal error\n');
         return;
       }
-      if (error.code === 'ENOENT' && segments.every(segment => !segment.includes('.')) && !['api', 'upload', 'uploads', 'assets'].includes(segments[0])) {
-        try { asset = await openAsset(root, ['index.html']); } catch { asset = null; }
+      if (
+        error.code === 'ENOENT' &&
+        segments.every(segment => !segment.includes('.')) &&
+        !['api', 'upload', 'uploads', 'assets'].includes(segments[0])
+      ) {
+        try {
+          asset = await openAsset(root, ['index.html']);
+        } catch {
+          asset = null;
+        }
       }
     }
     if (!asset) {
       reply(404, 'Not found\n');
       return;
     }
-    res.writeHead(200, { 'Content-Type': types.get(path.extname(asset.candidate).toLowerCase()) ?? 'application/octet-stream', 'Content-Length': asset.size });
+    res.writeHead(200, {
+      'Content-Type': types.get(path.extname(asset.candidate).toLowerCase()) ?? 'application/octet-stream',
+      'Content-Length': asset.size,
+    });
     if (req.method === 'HEAD') {
       await asset.handle.close();
       res.end();
@@ -121,8 +150,9 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('Invalid PORT');
   const server = createStaticServer();
   server.listen(port, '0.0.0.0');
-  for (const signal of ['SIGTERM', 'SIGINT']) process.once(signal, () => {
-    server.close();
-    setTimeout(() => process.exit(0), 10_000).unref();
-  });
+  for (const signal of ['SIGTERM', 'SIGINT'])
+    process.once(signal, () => {
+      server.close();
+      setTimeout(() => process.exit(0), 10_000).unref();
+    });
 }
