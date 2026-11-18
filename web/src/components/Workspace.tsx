@@ -20,7 +20,7 @@ export function footprintReason(result: FootprintResult) {
 export function FootprintSummary({ report, plan, result, scanning, failed }: { report?: FootprintReport; plan?: FootprintPlan; result?: FootprintResult; scanning?: boolean; failed?: boolean }) {
   const current = result?.after ?? report;
   const state = failed || current?.incomplete && (current.state === 'NO_RECORDS' || current.state === 'PROVENANCE_ONLY' && plan?.blocked) ? 'INCOMPLETE' : current?.state;
-  const headings = { AI_DECLARATION: 'AI METADATA BULUNDU', METADATA_HINTS: 'AI METADATA İPUCU BULUNDU', PROVENANCE_ONLY: 'DİJİTAL KAYNAK KAYDI BULUNDU', NO_RECORDS: 'AI METADATA BULUNAMADI', INCOMPLETE: 'METADATA ANALİZİ TAMAMLANAMADI' };
+  const headings = { AI_DECLARATION: 'AI METADATA BULUNDU', METADATA_HINTS: 'AI METADATA BULUNDU', PROVENANCE_ONLY: 'AI METADATA BULUNDU', NO_RECORDS: 'AI METADATA BULUNAMADI', INCOMPLETE: 'METADATA ANALİZİ TAMAMLANAMADI' };
   const descriptions = { AI_DECLARATION: 'Metadata içinde açık AI üretim beyanı bulundu; bu beyan doğrulanmamıştır.', METADATA_HINTS: 'Araç veya üretim parametresi ipuçları bulundu; bunlar AI üretiminin kesin kanıtı değildir.', PROVENANCE_ONLY: 'C2PA kaynak kaydı bulundu; bu kayıt tek başına AI üretimi anlamına gelmez.', NO_RECORDS: 'İncelenebilen metadata alanlarında AI kaynak kaydı tespit edilmedi.', INCOMPLETE: 'Bazı metadata alanları okunamadı veya güvenilir biçimde değerlendirilemedi.' };
   const pending = scanning || !current && !failed;
   const tone = pending ? 'pending' : result ? 'processed' : state === 'NO_RECORDS' ? 'clear' : 'detected';
