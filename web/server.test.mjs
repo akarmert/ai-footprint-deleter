@@ -34,6 +34,9 @@ before(async () => {
   await writeFile(path.join(dist, 'assets', 'image.webp'), 'webp');
   await writeFile(path.join(dist, 'assets', 'module.wasm'), 'wasm');
   await writeFile(path.join(dist, 'assets', 'unknown.bin'), 'binary');
+  await writeFile(path.join(dist, 'assets', 'app.js'), 'identity');
+  await writeFile(path.join(dist, 'assets', 'app.js.br'), 'brotli');
+  await writeFile(path.join(dist, 'assets', 'app.js.gz'), 'gzip');
   await writeFile(path.join(directory, 'secret.txt'), 'private');
   await writeFile(path.join(dist, '.env'), 'private');
   server = createStaticServer({ distDir: dist });
@@ -174,4 +177,29 @@ test('symlink files and directories cannot expose outside files', async t => {
     assert.equal(result.status, 404);
     assert.equal(result.body, 'Not found\n');
   }
+});
+
+test('hashed assets are immutable while the entry point is never cached', async () => {
+  assert.equal((await send('/assets/style.css')).headers['cache-control'], 'public, max-age=31536000, immutable');
+  assert.equal((await send('/')).headers['cache-control'], 'no-store');
+  assert.equal((await send('/review')).headers['cache-control'], 'no-store');
+});
+
+test('precompressed variants are served only when the client accepts them', async () => {
+  const cases = [
+    ['gzip, deflate, br', 'br', 'brotli'],
+    ['gzip', 'gzip', 'gzip'],
+    ['br;q=0, gzip', 'gzip', 'gzip'],
+    ['', undefined, 'identity'],
+  ];
+  for (const [accept, encoding, body] of cases) {
+    const result = await send('/assets/app.js', 'GET', accept ? { 'Accept-Encoding': accept } : {});
+    assert.equal(result.headers['content-encoding'], encoding, accept);
+    assert.equal(result.body, body);
+    assert.match(result.headers['content-type'], /text\/javascript/);
+    assert.equal(result.headers.vary, 'Accept-Encoding');
+  }
+  const plain = await send('/assets/style.css', 'GET', { 'Accept-Encoding': 'br' });
+  assert.equal(plain.headers['content-encoding'], undefined);
+  assert.equal(plain.body, 'body {}');
 });

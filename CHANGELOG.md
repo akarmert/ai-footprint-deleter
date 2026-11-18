@@ -2,6 +2,8 @@
 
 ## Web — yayımlanmamış
 
+- Production: `/assets/*` bir yıl `immutable` önbelleklenir, `index.html` önbelleklenmez; derlemede Brotli/gzip kopyaları üretilir ve sunucu yalnız seçer (ana JS 265 KB → 73 KB). Favicon eklendi.
+- Kullanıcıya görünen bütün Türkçe metinler gözden geçirildi: ana sayfa, sonuçlar, kayıt gerekçeleri ve hata mesajları kısa, tek üslupta; teknik ayrıştırıcı hataları anlaşılır bir cümleyle sarılır.
 - Tek akış: görsel ve videoda yalnız „Tüm Metadata'yı Kaldır" düğmesi var. Onay penceresi, Güvenli/Kapsamlı mod seçimi, „Yalnız C2PA'yı Kaldır" ve ayrı metadata temizliği kaldırıldı; Ayrıntılar bölümü yalnız bilgi gösterir. Kullanılmayan motor kodu (`cleanFootprints`, kapsamlı mod, eski Worker mesajları) silindi.
 - Performans: büyük görsellerde tarama ve temizlik hızlandı (120 MiB PNG: Tüm Metadata'yı Kaldır 5,6 s → 2,0 s; 53 MiB JPEG 1,9 s → 1,4 s); doğrulama kapsamı aynı. Bellek tepe değeri değişmedi.
 - Yeni „Tüm Metadata'yı Kaldır" düğmesi: C2PA ile birlikte EXIF, XMP, IPTC, yorumlar ve PNG metinleri tek tıkta, tek doğrulanmış işlemde silinir; ICC ve yön bilgisi taşıyan EXIF korunur. Gerçek Gemini/ChatGPT dosyalarında tam kaldırma doğrulandı.

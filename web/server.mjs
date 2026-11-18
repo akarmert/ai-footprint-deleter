@@ -40,6 +40,23 @@ const headers = {
   'Strict-Transport-Security': 'max-age=31536000',
   'Cache-Control': 'no-store',
 };
+// Vite fingerprints everything under /assets, so those files never change at the same URL.
+const immutable = 'public, max-age=31536000, immutable';
+// Precompressed siblings written once at build time by scripts/precompress.mjs; preferred in order.
+const encodings = [
+  ['br', '.br'],
+  ['gzip', '.gz'],
+];
+
+function accepts(header, name) {
+  return String(header ?? '')
+    .split(',')
+    .some(part => {
+      const [token, ...params] = part.trim().toLowerCase().split(';');
+      const q = params.map(param => param.trim()).find(param => param.startsWith('q='));
+      return token === name && (!q || Number(q.slice(2)) > 0);
+    });
+}
 
 async function openAsset(root, segments) {
   const rootInfo = await lstat(root);
@@ -121,9 +138,24 @@ export function createStaticServer({ distDir = defaultRoot } = {}) {
       reply(404, 'Not found\n');
       return;
     }
+    const type = types.get(path.extname(asset.candidate).toLowerCase()) ?? 'application/octet-stream';
+    const relative = path.relative(root, asset.candidate).split(path.sep);
+    let encoding;
+    for (const [name, suffix] of encodings) {
+      if (!accepts(req.headers['accept-encoding'], name)) continue;
+      const variant = await openAsset(root, [...relative.slice(0, -1), relative.at(-1) + suffix]).catch(() => null);
+      if (!variant) continue;
+      await asset.handle.close();
+      asset = variant;
+      encoding = name;
+      break;
+    }
+    if (relative[0] === 'assets') res.setHeader('Cache-Control', immutable);
+    res.setHeader('Vary', 'Accept-Encoding');
     res.writeHead(200, {
-      'Content-Type': types.get(path.extname(asset.candidate).toLowerCase()) ?? 'application/octet-stream',
+      'Content-Type': type,
       'Content-Length': asset.size,
+      ...(encoding ? { 'Content-Encoding': encoding } : {}),
     });
     if (req.method === 'HEAD') {
       await asset.handle.close();

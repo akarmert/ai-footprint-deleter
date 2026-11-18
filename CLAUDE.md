@@ -25,7 +25,7 @@ npm start       # dist'i http://localhost:3000 üzerinde sunar
 
 ## Değişmez kurallar
 
-- **Gizlilik sınırı:** Medya sunucuya gönderilmez. `server.mjs` yalnız `web/dist`'i sunar; CSP `connect-src 'none'`. Upload endpoint'i, analitik veya harici istek ekleme.
+- **Gizlilik sınırı:** Medya sunucuya gönderilmez. `server.mjs` yalnız `web/dist`'i sunar; CSP `connect-src 'none'`. Upload endpoint'i, analitik veya harici istek ekleme. Sunucu istek sırasında iş yapmaz: sıkıştırma derlemede (`scripts/precompress.mjs`) yapılır, `/assets/*` immutable, diğer yanıtlar `no-store`.
 - **Kayıpsız ve fail-closed:** Piksel yeniden kodlanmaz; her çıktı yeniden ayrıştırılır ve kodlanmış görüntü yükü SHA-256 ile karşılaştırılır. Doğrulanmayan çıktı kullanıcıya verilmez. Bilinmeyen/bozuk/belirsiz yapı sessizce temizlenmez, engellenir.
 - **Dürüst metin:** Uygulama AI üretimini kanıtlamaz; görünmez filigran (SynthID vb.) kaldırmaz; C2PA imzası doğrulanmaz. UI metinleri bu sınırları abartmamalı.
 - Ayrıştırıcı bütçelerini (boyut, derinlik, öğe sayısı, süre) gevşetirken gerekçe ve test ekle.
