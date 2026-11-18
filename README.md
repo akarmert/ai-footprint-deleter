@@ -1,185 +1,57 @@
-# AI Footprint Cleaner — Web
+# AI Footprint Cleaner
 
-AI Footprint Cleaner'ın birincil ürünü `web/` dizinindeki tarayıcı uygulamasıdır. Web paketinin mevcut sürümü `web/package.json` içinde **0.1.0** olarak tanımlıdır. Medya tarayıcıdaki Worker içinde yerel işlenir; Node sunucusu yalnız derlenmiş statik içeriği sunar, medya yükleme veya işleme API'si içermez.
+Görsel ve videolardaki metadata'yı ve gömülü C2PA kaynak kayıtlarını **tamamen tarayıcıda** inceleyip, pikselleri yeniden kodlamadan temizleyen web uygulaması. Dosyalar sunucuya gönderilmez; sunucu yalnız derlenmiş statik dosyaları verir.
 
-## Web uygulamasını çalıştırma
+- **Görsel:** JPEG, PNG, WebP (en fazla 128 MiB, 40 MP). Çoklu görüntülü JPEG (MPF / Ultra HDR) desteklenir.
+- **Video:** MP4, MOV (en fazla 1.000.000.000 bayt; masaüstü Chrome/Edge, File System Access gerekir).
+- **Tek işlem:** „Tüm Metadata'yı Kaldır" — C2PA deposu ile EXIF, XMP, IPTC, yorumlar ve PNG metinleri tek doğrulanmış işlemde silinir. Renk profili (ICC), görüntü yönünü taşıyan EXIF ve tanınmayan bloklar korunur ve listelenir.
+- **Bilgilendirme:** Dosyada adı geçen AI aracı (ör. Google Gemini, OpenAI ChatGPT) doğrulanmamış beyan olarak gösterilir.
 
-Node.js 24 ve npm ile `web/` dizininde çalıştırın:
+## Sınırlar
 
-```sh
+- AI üretimini kanıtlamaz; metadata beyanları doğrulanmamış iddialardır. C2PA imzası, güven zinciri ve içerik hash'i doğrulanmaz.
+- Piksel içi filigranlar (SynthID, görünür logolar) kaldırılmaz.
+- Bilinmeyen, bozuk veya belirsiz yapılar sessizce temizlenmez; işlem engellenir ve nedeni gösterilir.
+- Her çıktı yeniden ayrıştırılır; kodlanmış görüntü yükü bayt bayt korunur. Doğrulanmayan çıktı verilmez.
+- Büyük dosyalarda bellek kullanımı dosya boyutunun birkaç katına çıkar (120 MiB PNG ≈ 1 GB); mobil tarayıcılarda sınır düşüktür.
+
+## Geliştirme (`web/`, Node 24)
+
+```bash
 npm ci
+npm run lint && npm run format:check
+npm run typecheck:tests
+npm test                     # birim testleri; video testleri PATH'te ffmpeg (libx264) ister
 npm run build
-npm start
+npx playwright install chromium   # ilk kez
+npm run test:e2e             # tarayıcı testleri (önce build)
+npm start                    # http://localhost:3000 (PORT ile değiştirilebilir)
 ```
 
-Varsayılan adres `http://localhost:3000` olur; sunucu `PORT` ortam değişkenini destekler. Geliştirme sunucusu için `npm run dev`, otomatik testler için `npm test` kullanılır. Bu komutlar çalışma yönergesidir; bu dokümantasyon güncellemesinde çalıştırıldıkları iddia edilmez. Ayrıntılı kullanım, sınırlar ve Docker/Railway ayarları [web/README.md](web/README.md) içindedir.
+Kod haritası ve proje kuralları: [`CLAUDE.md`](CLAUDE.md). Değişiklikler: [`CHANGELOG.md`](CHANGELOG.md).
 
-## Güncel web kapsamı ve mimari
+### C2PA örnek dosya ölçümü
 
-- JPEG, PNG ve WebP metadata taraması; desteklenen blokları yeniden kodlamadan kaldırma ve çıktıyı yeniden ayrıştırarak doğrulama.
-- Dar codec/kapsayıcı kapsamıyla MP4/MOV taraması ve doğrulanmış yerel disk çıktısı. Her video yapısı desteklenmez.
-- Önce dosya seçimi, ardından kademeli açılan analiz/temizleme alanları; lacivert zemin, mavi eylemler ve turuncu vurgularla modüler arayüz.
-- Varsayılan Güvenli Mod, açık seçimli Kapsamlı Temizlik ve gerektiğinde tek hak/telif onayı. Kapsamlı mod desteklenen JPEG/WebP ICC kayıtlarını kaldırabilir; PNG ICC korunur.
-- Metadata/C2PA kaynak beyanları doğrulanmamış beyan olarak incelenir; web kriptografik C2PA imza doğrulaması yapmaz. C2PA manifest içeriği (Claim Generator, Actions, Digital Source Type) JPEG APP11, PNG `caBX` ve WebP `C2PA` depolarından okunur. Desteklenen JPEG APP11, PNG `caBX` ve WebP `C2PA` gömülü depoları, yapısal doğrulamadan sonra `Tüm Metadata'yı Kaldır` veya `Yalnız C2PA’yı Kaldır` ile ayrı onay penceresi olmadan kaldırılabilir (çoklu görüntü/MPF JPEG'lerde de; ikincil görüntüler bayt bayt korunur). Bozuk, harici veya belirsiz provenance kaldırılmaz ve normal metadata temizliğini engeller. Metadata beyanı AI üretim kanıtı değildir; görünmez filigran veya tüm AI izlerini kaldırma garantisi yoktur.
-- React/TypeScript/Vite arayüzü `web/src/`, statik sunucu `web/server.mjs`, dağıtım tanımı `web/Dockerfile` içindedir. Python web çalışma zamanından bağımsızdır; Pillow web fixture üreticisinin geliştirme aracıdır, web runtime bağımlılığı değildir.
+`web/tests/footprints-fixtures.mjs`, 11 halka açık C2PA örneğini sabit commit'lerden indirip SHA-256 ile doğrular, motoru çalıştırır ve çıktıları resmî C2PA SDK ile ayrıca okur (ağ kapalı ayarlarla). Python ortamı gerekir: `pip install c2pa-python==0.38.0`.
 
-## İleri geliştirme yönü
-
-Aktif geliştirme yalnız web ürününe yöneliktir: yerel işleme ve bütünlük sınırlarını korumak, dosya/analiz akışını iyileştirmek, gerçek dosyalarla format uyumluluğunu ve tarayıcı kabul kontrollerini genişletmek. Docker/Linux, native tarayıcı dosya seçicisi ve gerçek production kabulü gibi açık kapılar, geçmiş test sonuçlarından ayrı doğrulanmalıdır.
-
-**Windows masaüstü, EXE, PyInstaller paketleme ve installer geliştirmesi ileri planın dışındadır.** Yeni masaüstü dağıtımı, kod imzalama veya installer yol haritası yoktur. Python kodu, eski komutlar ve test/benchmark kanıtları silinmeden legacy/referans olarak korunur; web çalışma zamanının parçası değildir.
-
----
-
-# Tarihsel legacy/referans — Masaüstü 0.2.0b1 (Phase 2B)
-
-**Aşağıdaki tüm bölümler eski Python/Qt masaüstü sürümünü ve dönemin kanıtlarını anlatır.** Sürüm, bağımlılık, test, benchmark ve dağıtım sonuçları güncel web sürümüne veya bugünün doğrulamasına ait değildir. Eski kullanım/derleme komutları yalnız tarihsel yeniden üretim ve referans içindir; aktif masaüstü geliştirme veya yayın talimatı değildir. Belgelerdeki faz adları ve tamamlanmamış işler geçmiş kapsamı kaydeder, yeni masaüstü taahhüdü oluşturmaz.
-
-## FFT / DCT / Radyal analiz kullanımı (tarihsel)
-
-Görseli açıp taramayı tamamlayın. **AI İz Analizi → FFT / DCT / Radyal** alt sekmesinde tile/window/mean seçerek frekans analizini başlatın. Y/Cb/Cr decodedkanalları,2DHannvarsayılanwindow, globalorigin8×8DCT ve hamgüçRAPSD hesaplanır. Kanal ve log/percentile/DC/sabitkontrast ayarları yalnız görünümü değiştirir; window/tile/mean değişimi yeniden analiz gerektirir. Son kaynakdoğrulama bitmeden100gösterilmez.
-
-Bu motor AI kökenini veya filigranı saptamaz; spektralörüntüler teknikistatistiktir. Tiledspectrum globalgörüntüFFT değildir. DCT nativeJPEG kuantizekatsayıları değildir. FFT/DCT kaynak dosyayı değiştirmez. NumPy2.5.4 yeni sabit bağımlılıktır; SciPy/MLframework yoktur.
-
-Belgeler: [Frekans mimarisi](docs/FREQUENCY_ARCHITECTURE.md), [Yöntemler](docs/FFT_DCT_METHODS.md), [Windowing](docs/WINDOWING_AND_LEAKAGE.md), [Chroma](docs/CHROMA_ANALYSIS.md), [DCT grid](docs/DCT_GRID_ALIGNMENT.md), [RAPSD](docs/RADIAL_POWER_SPECTRUM.md), [Testler](docs/FREQUENCY_TEST_RESULTS.md), [Performans](docs/FREQUENCY_PERFORMANCE.md). ÖncekiPhase2A/Dashboardkanıtları korunur.
-
-Phase2A: gerçek ham piksel istatistikleri, RGB/luminance histogramları, source SHA256 bağlı snapshot, karo işleme ve ortak soft bellek bütçesi. AI üretimi tespiti değildir.
-
-Yeni belgeler: [Analiz mimarisi](docs/ANALYSIS_ARCHITECTURE.md), [Bellek modeli](docs/MEMORY_MODEL.md), [Analiz testleri](docs/ANALYSIS_TEST_RESULTS.md), [Analiz performansı](docs/ANALYSIS_PERFORMANCE.md). Eski v0.1.1 test/benchmark kanıtları aşağıdaki bağlantılarda korunur.
-
-## Genel Bakış — metadata ve kaynak özeti
-
-Görsel açıldığında Genel Bakış'ta gerçek dosya bilgileri, metadata/kapsayıcı sayaçları ve kaynak kayıtları görünür. Kategori düğmeleri görünümü filtreler; **Tümünü Aç / Tümünü Kapat** panelleri kontrol eder. Büyük değerleri çift tıklama veya Enter ile sınırlı düzmetin detayında inceleyin. Tarama kapsamı düğmesi bulunamadı/desteklenmiyor/kontrol edilemedi açıklamalarını açar.
-
-C2PA imza, içerik hash ve sertifika güveni ayrı sonuçlardır. Claim Generator model adı değildir. AI üretim beyanı dosyanın kaynak iddiasıdır; SynthID geçen ifade filigran dedektörü sonucu değildir. Opak metadata alt alanları `? / Bilinmiyor` gösterilir; alan sayısı ile kapsayıcı sayısı ayrı tutulur. Dosya özellikleri metadata toplamına katılmaz. Dashboard salt okunurdur; temizlemek için Metadata Temizleyici'ye geçin.
-
-Yeni kaynak seçimi eski kartları temizler. Tarama worker'ı son kaynak hash'ini doğrulamadan güncel özet yayınlamaz. Kaynak değişirse yeniden tarama gerekir. YeniDashboard ek tam çözünürlüklü önizleme decode başlatmaz.
-
-Belgeler: [Dashboard mimarisi ve sayımlar](docs/DASHBOARD_ARCHITECTURE.md), [Dashboard test sonuçları](docs/DASHBOARD_TEST_RESULTS.md).
-
-## Phase2A kullanımı
-
-Görseli normal akışta açıp metadata analizini tamamlayın; **AI İz Analizi** ekranında temel analizi başlatın. Gerçek karo ilerlemesini, kanal min/max/mean/std ve histogramları inceleyin. RGB/RGBA/L 8-bit ham örnekler desteklenir. Alpha dahil bütün pikseller sayılır; ICC dönüşümü uygulanmaz, EXIF orientation uygulanmadan storage istatistiği alınır. Diğer renk modları Unsupported olarak belirtilir.
-
-Kaynak ilk analizden sonra değişirse yeni analiz ve Custom metadata temizliği eski SHA256 ile çalışmaz; görseli yeniden analiz edin. Yeni dosya seçimi eski generation sonuç/histogramlarını geçersiz kılar. İşlem iptali native decoder ortasında değil güvenli checkpoint'te gerçekleşir.
-
-Analiz salt okunurdur. Karo işleme gerçek streaming decode garantisi değildir; yetersiz soft budget kontrollü reddetme/bekleme uygular. Bu piksel analizi PSNR/SSIM, gürültü/doku veya AI yüzdesi hesaplamaz; FFT/DCT ayrı frekans sekmesindedir. Analiz raporu varsayılan Privacy-Safe dışa aktarılır; kaynak hash/yol/snapshot kimliği aktarılmaz.
-
-Benchmark: `.\.venv\Scripts\python scripts\benchmark_analysis.py --output docs\analysis-new-run.json` (yeni çıktı adı kullanın). Eski `scripts/benchmark.py` değişmeden korunur.
-
-Yalnız yetkili olduğunuz görsellerde kullanın. Telif ve kaynak yönetim bilgilerini kaldırma yetkisi kullanıcı sorumluluğundadır; bildirim hukuki uygunluk garantisi değildir.
-
-v0.1.1 denetim belgeleri: [Güvenlik](docs/SECURITY_AUDIT.md), [Testler](docs/TEST_RESULTS.md), [Performans](docs/PERFORMANCE.md), [Bağımlılıklar](docs/DEPENDENCIES.md), [Sınırlar](docs/KNOWN_LIMITATIONS.md), [Değişiklikler](CHANGELOG.md).
-
-Windows için çevrimdışı görüntü metadata gizliliği uygulaması. Bu sürüm **Faz 1, Faz 2A ve Faz 2B analizlerini içeren beta uygulamadır**; ticari dağıtıma hazır sertifikalı ürün değildir. AI üretimi saptamaz, dedektör yanıltma veya görünmez filigran kaldırma garantisi vermez.
-
-## Çalıştırma (Windows PowerShell)
-
-Python 3.12–3.15 64-bit hedeflenir; bu makinede Python **3.13.12** ile test edildi.
-
-```powershell
-python -m venv .venv
-.\.venv\Scripts\python -m pip install -r requirements.txt
-.\.venv\Scripts\python main.py
+```bash
+node tests/footprints-fixtures.mjs --self-test
+node tests/footprints-fixtures.mjs --download        # AFC_FIXTURE_CACHE_PARENT, AFC_PYTHON ile ayarlanabilir
+node tests/footprints-fixtures.mjs --cache <klasör>
 ```
 
-Geliştirme testleri:
+## Yayın (Railway)
 
-```powershell
-.\.venv\Scripts\python -m pip install pytest==9.1.1
-.\.venv\Scripts\python -m pytest -q
-.\.venv\Scripts\python -m pip check
-```
+Docker imajı yalnız `dist/` ve `server.mjs` içerir; medya işleme sunucuda yapılmaz.
 
-## Kullanım
+| Railway ayarı | Değer |
+|---|---|
+| Root Directory | `/web` |
+| Build | `web/Dockerfile` (otomatik algılanır) |
+| Healthcheck | `/healthz` |
+| Port | Railway `PORT` değişkeni (varsayılan 3000) |
+| Secrets / Volumes | Gerekmez |
 
-1. **Görsel Aç** veya dosyayı pencereye sürükleyip bırakın. Tarama arka planda başlar.
-2. Görsel Analizi sayfasında metadata, dosya SHA-256 özeti, çözümlenmiş EXIF/PNG alanları ve resmî SDK C2PA çıktısını inceleyin.
-3. Meta Veri Temizliği sayfasında Privacy, Advanced veya Custom seçin.
-   - **Privacy:** kaldırılabilir EXIF, XMP, yorum ve PNG metin gruplarını kaldırır. Telif işaretli gruplar ve semantiği belirsiz IPTC korunur; ayrı hak kaldırma onayı gerekir. ICC korunur. Korunan gruplarda kişisel bilgiler kalabilir.
-   - **Advanced:** seçilen kategorilerin kaldırılabilir kapsayıcı grupları.
-   - **Custom:** analiz tablosunda işaretlenen kapsayıcı grupları. Tekil EXIF alt etiketlerini bağımsız düzenleme henüz yoktur.
-4. C2PA kayıtlarının kaldırılması ayrı onay gerektirir. İmzalı dosyada diğer metadata değişiklikleri de imzayı etkileyebileceğinden onaysız değişiklik engellenir.
-5. Yeni ve kullanılmayan bir çıktı adı seçin. Format değiştirilemez. Orijinal ve mevcut çıktılar üzerine yazılmaz.
-6. Önce/sonra panellerinde fare tekerleğiyle yakınlaşın, sürükleyerek kaydırın; görüntüye sığdır kontrollerini kullanın.
-7. Raporlar sayfasından JSON dışa aktarın. **Privacy-Safe Report varsayılandır**: ham metadata, manifest, yollar, dosya hashleri ve kişisel değerler aktarılmaz. Standard Report açık onayla seçilir ve GPS/prompt/kimlik içerebilir. Son20 rapor bellekte tutulur; dışa aktarılan dosyalar kalır.
-8. İşlemi İptal Et güvenli checkpoint'te durdurur; native decode/SDK çağrısı ortasında zorla kesme yapılmaz. Kapanış iptal isteyerek worker dönüşünü bekler.
-9. Başlangıçta eski `.afc-*` adayı uyarısı varsa Ayarlar bölümünü inceleyin. Adaylar otomatik silinmez; sahipliği doğrulamadan manuel silmeyin.
+Sunucu yalnız GET/HEAD kabul eder, dotfile/traversal/symlink isteklerini reddeder ve CSP `connect-src 'none'`, `worker-src 'self'` ile sayfanın dışarıya bağlantı kurmasını engeller. Altyapı erişim logları statik istek URL'lerini görebilir; dosya adları hiçbir isteğe eklenmez.
 
-## Gerçek çalışan kapsam
-
-- PySide6/Qt koyu tema, sekiz bölümlü navigasyon; analiz ve temizlik QThreadPool ile çalışır.
-- JPG/JPEG, PNG, WebP ve tek sayfalı TIFF açma/tarama.
-- EXIF/alt IFD, PNG metin, XMP/IPTC kapsayıcı varlığı ve ham önizleme, ICC ve C2PA inceleme.
-- PNG/JPEG/WebP kapsayıcılarından yeniden kodlamadan seçilebilir metadata silme.
-- Orijinal hash, gerçek format, dosya boyutu ve çözünürlük sınırları; bozuk dosyalarda hata.
-- Resmî `c2pa-python` Reader, SDK doğrulama bulguları ve manifest JSON. Çevrimiçi manifest/OCSP istekleri kapalı; ağ host listesi boş.
-- Çıktıyı tekrar açma; metadata kapsayıcıları, çözünürlük, mod/alpha, ICC, etkin orientation, birebir decoded pixel eşitliği ve sıkıştırılmış payload SHA256 eşitliği denetimi.
-- JSON analiz/işlem raporları, UTC işlem zamanı, kaldırılan/korunan kapsayıcılar.
-- Dönemin olası yetkili filigran dedektörleri için oluşturduğu Protocol/registry referansı; kurulu dedektör yoksa `Not Supported`. Aktif masaüstü dedektör geliştirme planı değildir.
-
-## Açık sınırlamalar
-
-- TIFF temizliği yok; TIFF salt analizdir. Animasyon ve çok sayfalı görüntüler reddedilir.
-- JPEG C2PA kaldırma desteklenmez: genel JUMBF APP11 kayıtlarına zarar vermemek için korunur ve imzalı JPEG değişiklikleri engellenir. PNG/WebP desteklenen C2PA chunk'ları ancak SDK sonrası yokluk kontrolüyle kaldırılabilir.
-- EXIF Orientation 1 dışında ise EXIF silme engellenir; yönü koruyacak dönüştürme dönemin Faz 3 planında bırakılmış, uygulanmamış tarihsel bir hedeftir; aktif masaüstü planı değildir.
-- Privacy profilinin kapsamı kapsayıcı bazındadır: örneğin EXIF içindeki tarih/cihaz dışındaki alanlar da silinir. Üst grup silinirken alt alanların tümü kaybolur.
-- ExifTool henüz entegre değil. IPTC ve XMP tüm semantik alanlarıyla ayrıştırılmaz. Üretim parametreleri sadece dosyada mevcut metin olarak gösterilir; model/seed/prompt tahmini yapılmaz.
-- Bazı nadir metadata türleri / özel APP segmentleri silinmez. Uygulama tam anonimleştirme veya tüm kişisel bilgilerin kaldırıldığını garanti etmez.
-- C2PA güven zinciri, özel trust store ve çevrimiçi iptal doğrulaması tamamlanmış değildir. SDK'nin `validation_status`, `validation_results` ve `validation_state` alanları birlikte incelenmelidir. Manifest okunması imzanın güvenilir olduğunu göstermez. Resmî test örneğinde `signingCredential.untrusted` beklenir.
-- FFT/DCT ve radyal spektrum Faz 2B kapsamında çalışır. Kalite filtreleri, SSIM/PSNR/LPIPS, gürültü/doku analizi, batch, PDF, installer, uygulama ikonu ve lisans sistemi henüz desteklenmez.
-- 128 MiB dosya / 40 megapiksel sınırı vardır; büyük dosyalarda birkaç görüntü kopyası nedeniyle bellek kullanımı yükselebilir. 1080p/4K/8K/39.992MP için gerçek Windows RAM ve UI benchmarkı yapıldı; sonuçlar ve bellek trade-off'u PERFORMANCE belgesindedir.
-- Önizleme renk yönetimi profesyonel ICC soft-proof değildir; temizlik ICC baytlarını korur.
-
-## Tarihsel Windows dağıtım yöntemi (aktif geliştirme dışı)
-
-Aşağıdaki komutlar eski paketleme yönteminin kaydıdır; yeni EXE/PyInstaller/installer çalışması planlanmaz. Dönemin kaynak kökünde kullanılan `onedir` yöntemi Qt LGPL yeniden bağlama/kitaplık değiştirme imkânını tek dosyaya göre kolaylaştırır:
-
-```powershell
-.\.venv\Scripts\python -m pip install pyinstaller==6.22.3
-.\.venv\Scripts\python -m PyInstaller --noconfirm --windowed --onedir --name AI-Footprint-Cleaner --add-data "assets;assets" --collect-all c2pa main.py
-```
-
-Çıktı: `dist\AI-Footprint-Cleaner\AI-Footprint-Cleaner.exe`. v0.1.1 onedir EXE üretildi ve mevcut Windows11 geliştirme makinesinde gerçek `windows` Qt platformuyla görsel açma/tarama/temizleme/JSON smoke akışı çalıştırıldı. Temiz Windows makinesinde ve Windows10 üzerinde dağıtım testi yapılmadı; installer üretilmedi. Açık diagnostic modu: `AI-Footprint-Cleaner.exe --smoke-test <mevcut-boş-klasör>`; yalnız disposable fixture oluşturur, ağ kullanmaz. Qt DLL/pluginleri, c2pa DLL ve lisans bildirimleri dağıtıma dahil edilmeli. Dönemin ticari yayın değerlendirmesinde Windows 10/11 ayrı testleri, kod imzalama, SBOM ve installer eksik önkoşullar olarak kaydedilmişti; bu işler artık ileri geliştirme hedefi değildir.
-
-## Mimari
-
-- `main.py`: Qt giriş noktası.
-- `app/models/schema.py`: UI'dan bağımsız dataclass sözleşmeleri.
-- `app/services/workflow.py`: tarama, güvenlik sınırları, işleme ve bağımsız çıktı kontrolleri.
-- `app/ui/`: masaüstü navigasyon, metadata tablosu, raporlar, görüntü karşılaştırma.
-- `app/workers/`: Qt arka plan iş sinyalleri ve yaşam döngüsü.
-- `modules/metadata/containers.py`: sınırlı, doğrulamalı PNG/JPEG/WebP segment okuyucu/silici.
-- `modules/c2pa/reader.py`: resmî SDK adaptörü, offline scoped context.
-- `modules/watermark/registry.py`: yeni yetkili dedektörler için genişletme noktası.
-- `tests/unit/`, `tests/integration/`: yerel üretilen zararsız fixture'larla testler.
-
-Tarihsel mimari notu, olası kalite/footprint/işleme modüllerini Qt'ye bağımlı olmadan service katmanına bağlamayı öngörüyordu; bu bir aktif masaüstü yol haritası değildir. Metadata temizleme ile filigran algılama farklı sözleşmelerdir. Referans güvenlik ilkesi olarak yeni format desteği, C2PA/ICC/alpha koruma ve negatif testler eklenmeden etkinleştirilmemelidir.
-
-## Bağımlılık doğrulaması ve lisans
-
-2026-10-10 tarihinde PyPI paket JSON metadata'sı ve Windows x64 wheel varlığı kontrol edildi:
-
-| Paket | Sabit sürüm | Bildirilen lisans |
-|---|---|---|
-| Pillow | 12.3.0 | MIT-CMU |
-| PySide6 | 6.12.0 | LGPL-3.0-only / GPL alternatifleri veya ticari Qt lisansı |
-| c2pa-python | 0.38.0 | MIT OR Apache-2.0 |
-| pytest (geliştirme) | 9.1.1 | MIT |
-| PyInstaller (paketleme) | 6.22.3 | GPL ve dağıtılabilir uygulama için özel bootloader istisnası |
-
-Bu tablo hukuki uygunluk sertifikası değildir. Transitif/native bileşen lisansları ve Qt LGPL yükümlülükleri (bildirimler, ilgili kaynak erişimi, yeniden bağlama/kitaplık değiştirme) ticari dağıtımdan önce ayrıca incelenmelidir. NumPy 2.5.4 Faz 2B için kurulmuştur; OpenCV/PyTorch kullanılmaz. NumPy lisans ve wheel doğrulaması FREQUENCY_ARCHITECTURE belgesindedir.
-
-Birincil kaynaklar:
-- https://pypi.org/project/Pillow/12.3.0/
-- https://pypi.org/project/PySide6/6.12.0/
-- https://pypi.org/project/c2pa-python/0.38.0/
-- https://pypi.org/project/pytest/9.1.1/
-- https://pypi.org/project/pyinstaller/6.22.3/
-- https://github.com/contentauth/c2pa-python
-- https://github.com/contentauth/c2pa-rs/blob/main/sdk/src/settings/mod.rs
-- https://www.qt.io/licensing/open-source-lgpl-obligations
-
-## Güvenlik
-
-Telemetri, hesap, uygulama tarafından sunucu yükleme ve harici komut çağrısı yok. SDK ağ hostları deny-all ve remote manifest/OCSP kapalı ayarlanır; ancak SDK CAWG resolver yolu dahil tüm native ağ yolları paket yakalama ile doğrulanmadı (c2pa-rs issue #1645). Kesin ağ izolasyonu gereken ortamda işletim sistemi firewall kuralı da kullanılmalıdır. Geçici çıktı hedef klasörde oluşturulur ve normal hata/başarı akışında silinir; zorla süreç sonlandırılırsa `.afc-*` geçici dosyaları kalabilir. Disk şifreleme veya adli silme garantisi yoktur. Doğrulanmış geçici çıktı Windows'ta üzerine yazmayan atomik rename ile yayınlanır (POSIX'te no-clobber hard link); elektrik kesintisine dayanıklı işlem günlüğü ve sandbox edilmiş decoder henüz yoktur.
+Eski Python/PySide6 masaüstü uygulaması ve eski raporlar `desktop-legacy` git etiketinde arşivlidir.

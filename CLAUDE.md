@@ -1,6 +1,6 @@
 # AI Footprint Cleaner — çalışma notları
 
-Medya dosyalarındaki desteklenen metadata ve gömülü C2PA/provenance kayıtlarını inceleyip doğrulanmış, yeniden kodlamasız bir işlemle kaldıran araç. **Aktif ürün `web/`** (React + TypeScript + Vite, tamamen tarayıcıda çalışır). Kökteki Python/PySide6 masaüstü uygulaması legacy'dir; yeni özellik eklenmez.
+Medya dosyalarındaki desteklenen metadata ve gömülü C2PA/provenance kayıtlarını inceleyip doğrulanmış, yeniden kodlamasız bir işlemle kaldıran araç. Ürün `web/` altındadır (React + TypeScript + Vite, tamamen tarayıcıda çalışır). Eski Python masaüstü uygulaması `desktop-legacy` etiketinde arşivlidir.
 
 Güncel durum ve açık işler: `docs/history/GELISTIRME_DEVIR_OZETI_2026-11-18.md` (14. ve 15. bölümler).
 
@@ -19,8 +19,8 @@ npm start       # dist'i http://localhost:3000 üzerinde sunar
 
 - `npm test` `src/**/*.test.ts` glob'unu kullanır; yeni test dosyası otomatik çalışır.
 - `tsconfig.json` (build) testleri ve Node tiplerini hariç tutar; testler `tsconfig.test.json` ile ayrıca denetlenir (CI'da `npm run typecheck:tests`).
-- `web/tests/*-acceptance.js` ve `footprints-fixtures.mjs` `npm test` ile çalışmaz; yollar ortam değişkenleriyle verilir (`AFC_FIXTURES_DIR`, `AFC_VIDEO_FIXTURE`, `AFC_SCREENSHOT_DIR`, `AFC_FIXTURE_CACHE_PARENT`, `AFC_PYTHON`; ayrıntı `web/README.md`).
-- Tarayıcı testleri: `tests/e2e/app.spec.ts` güncel akışları (AI aracı kartı, başlıklar, Tüm Metadata'yı Kaldır + indirilen dosyanın motorla doğrulanması, Yalnız C2PA, hak onayı penceresi, okunamayan dosya, ağ isteği olmaması, dar ekran) kapsar. `tests/*-acceptance.js` betiklerinden yalnız `atmosphere` güncel arayüze uyuyor ve CI'da çalışıyor; diğerleri 2026-11-15 arayüzüne göre yazılmış elle referanslardır.
+- `web/tests/footprints-fixtures.mjs` (C2PA örnek ölçümü) `npm test` ile çalışmaz; ayrıntı kök `README.md`.
+- Tarayıcı testleri: `tests/e2e/app.spec.ts` güncel akışları (AI aracı kartı, başlıklar, Tüm Metadata'yı Kaldır + indirilen dosyanın motorla doğrulanması, Yalnız C2PA, hak onayı penceresi, okunamayan dosya, ağ isteği olmaması, dar ekran) kapsar. `tests/atmosphere-acceptance.js` (animasyon) `tests/e2e/acceptance.spec.ts` üzerinden çalışır.
 - CI: `.github/workflows/web-ci.yml` (Node 24, ffmpeg, `npm ci` / `npm run lint` / `npm run format:check` / `npm run typecheck:tests` / `npm test` / `npm run build`; ayrı `e2e` işi: build + `npm run test:e2e`). CI yeşil olmadan birleştirme.
 
 ## Değişmez kurallar
