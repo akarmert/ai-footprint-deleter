@@ -159,7 +159,7 @@ test('Worker unified contract returns report without blob on denial and verified
   const worker = readFileSync(new URL('./inspect.worker.ts', import.meta.url), 'utf8')
   const messages: any[] = []
   const self = { onmessage: undefined as any, postMessage: (value: unknown) => messages.push(value) }
-  runInNewContext(stripTypeScriptTypes(worker.replace(/^import .*;\r?\n/gm, '')), { self, Error, Uint8Array, Blob, validateSelection, scanImage, cleanImage, cleanC2pa, cleanFootprints, readC2pa })
+  runInNewContext(stripTypeScriptTypes(worker.replace(/^import\b[\s\S]*?\bfrom\s*['"][^'"]+['"];?[ \t]*\r?\n/gm, '')), { self, Error, Uint8Array, Blob, validateSelection, scanImage, cleanImage, cleanC2pa, cleanFootprints, readC2pa })
   const data = png(fixture('palette.png'), 'tEXt', bytes('parameters\0ComfyUI'))
   await self.onmessage({ data: { type: 'scan', file: new File([data], 'sample.png') } })
   assert.equal(messages.at(-1).scan.footprints.state, 'METADATA_HINTS')
@@ -177,7 +177,7 @@ test('Worker ignores concurrent clean requests and never publishes an intermedia
   const worker = readFileSync(new URL('./inspect.worker.ts', import.meta.url), 'utf8')
   const messages: any[] = []
   const self = { onmessage: undefined as any, postMessage: (value: unknown) => messages.push(value) }
-  runInNewContext(stripTypeScriptTypes(worker.replace(/^import .*;\r?\n/gm, '')), { self, Error, Uint8Array, Blob, validateSelection, scanImage, cleanImage, cleanC2pa, cleanFootprints, readC2pa })
+  runInNewContext(stripTypeScriptTypes(worker.replace(/^import\b[\s\S]*?\bfrom\s*['"][^'"]+['"];?[ \t]*\r?\n/gm, '')), { self, Error, Uint8Array, Blob, validateSelection, scanImage, cleanImage, cleanC2pa, cleanFootprints, readC2pa })
   const data = jpg(fixture('progressive.jpg'), 235, app11(store()))
   await self.onmessage({ data: { type: 'scan', file: new File([data], 'sample.jpg') } })
   const digest = globalThis.crypto.subtle.digest
@@ -316,7 +316,7 @@ test('retained opaque profiles APP0 and IPTC cannot become no-records or fully s
 test('fresh target mismatch rejects atomic output instead of silently changing the initial plan', async () => {
   const engine = readFileSync(new URL('./engine.ts', import.meta.url), 'utf8')
   let calls = 0
-  const isolated = runInNewContext(stripTypeScriptTypes(engine.replace(/^import .*\r?\n/gm, '').replace(/\bexport /g, '')) + '\ncleanFootprints', {
+  const isolated = runInNewContext(stripTypeScriptTypes(engine.replace(/^import\b[\s\S]*?\bfrom\s*['"][^'"]+['"];?[ \t]*\r?\n/gm, '').replace(/\bexport /g, '')) + '\ncleanFootprints', {
     Uint8Array, Uint32Array, DataView, TextDecoder, TextEncoder, SharedArrayBuffer, crypto: globalThis.crypto,
     validateC2paStore, resolveLocalC2paReference, analyzeXmp, removeXmpReference, readC2pa, classifyFootprintText, consentFootprintPlan,
     buildFootprints: (...args: Parameters<typeof buildFootprints>) => {

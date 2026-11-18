@@ -25,7 +25,7 @@ async function harness(mode: 'ok' | 'verify-fail' | 'write-fail' | 'cancel' | 'c
     async close() { calls.push('target-close'); if (mode === 'commit-cancel') await self.onmessage({ data: { type: 'cancel' } }); if (mode === 'close-fail') throw new Error('close failed'); },
     async abort() { calls.push('target-abort'); if (mode === 'abort-fail') throw new Error('abort failed'); },
   }; } };
-  const code = stripTypeScriptTypes(source.replace(/^import .*;\r?\n/gm, ''));
+  const code = stripTypeScriptTypes(source.replace(/^import\b[\s\S]*?\bfrom\s*['"][^'"]+['"];?[ \t]*\r?\n/gm, ''));
   runInNewContext(code, {
     self, setTimeout: (fn: () => void, ms: number) => setTimeout(fn, mode === 'cleanup-hang' ? 1 : ms), clearTimeout, navigator: { storage: { async estimate() { calls.push('estimate'); return mode === 'quota-unknown' ? {} : { quota: mode === 'quota-low' ? 4 : 10_000_000, usage: 0 }; }, async getDirectory() { if (mode === 'external' || mode === 'external-cleanup') throw new Error('OPFS must not be opened'); return root; } } }, crypto: { randomUUID() { return 'test'; } },
     scanVideo: async () => ({ format: 'MP4', records: [] }),

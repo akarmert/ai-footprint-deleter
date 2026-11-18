@@ -16,7 +16,7 @@ function imageWorker() {
     onmessage: undefined as unknown as (event: { data: Request }) => Promise<void>,
     postMessage: (value: Response) => messages.push(structuredClone(value)),
   };
-  runInNewContext(stripTypeScriptTypes(source.replace(/^import .*;\r?\n/gm, '')), { self, Error, Uint8Array, Blob, validateSelection, scanImage, cleanImage, cleanC2pa, readC2pa });
+  runInNewContext(stripTypeScriptTypes(source.replace(/^import\b[\s\S]*?\bfrom\s*['"][^'"]+['"];?[ \t]*\r?\n/gm, '')), { self, Error, Uint8Array, Blob, validateSelection, scanImage, cleanImage, cleanC2pa, readC2pa });
   return { self, messages };
 }
 
