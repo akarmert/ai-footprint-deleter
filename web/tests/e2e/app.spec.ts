@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
+import { spawnSync } from 'node:child_process';
 import { aiJpeg, fixture } from './files.ts';
 import { scanImage, cleanImage } from '../../src/engine.ts';
 
@@ -96,4 +97,27 @@ test('narrow screen: no horizontal overflow with results open', async ({ page })
   await choose(page, 'chatgpt.jpg', aiJpeg());
   await openAdvanced(page);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
+
+test('video: MP4 is scanned by the video Worker and the selection can be cleared', async ({ page }, testInfo) => {
+  const path = testInfo.outputPath('clip.mp4');
+  const made = spawnSync(
+    'ffmpeg',
+    [
+      ...['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=96x64:rate=10'],
+      ...['-f', 'lavfi', '-i', 'sine=frequency=440:sample_rate=44100', '-t', '1', '-c:v', 'libx264', '-c:a', 'aac'],
+      ...['-metadata', 'title=E2E', '-metadata', 'copyright=Test', '-movflags', '+faststart', '-y', path],
+    ],
+    { encoding: 'utf8' },
+  );
+  test.skip(made.error !== undefined || made.status !== 0, 'ffmpeg (libx264) is not available');
+  await page.locator('#media').setInputFiles(path);
+  await expect(page.locator('#inspection-title')).toHaveText('Video · Gelişmiş Araçlar');
+  await expect(page.locator('#footprint-result [role=status] strong').first()).toHaveText(
+    /Tarama tamamlandı · Temizlemeye hazır|Metadata taraması tamamlandı/,
+  );
+  await expect(page.locator('#remove-all-metadata')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: "Metadata'yı Temizle" })).toBeEnabled();
+  await page.getByRole('button', { name: 'Seçimi kaldır' }).click();
+  await expect(page.locator('.file-details')).toHaveCount(0);
 });
