@@ -7,10 +7,13 @@ export type Request =
   | { type: 'scan'; file: File }
   | { type: 'clean'; ids: string[]; rightsConsent: boolean; mode: CleaningMode }
   | { type: 'clean-c2pa'; c2paConsent: boolean }
-  | { type: 'clean-footprints'; c2paConsent: boolean; rightsConsent: boolean };
+  | { type: 'clean-footprints'; c2paConsent: boolean; rightsConsent: boolean }
+  | { type: 'clean-all-metadata' };
 export interface VerifiedOutput {
   footprintResult?: FootprintResult;
-  operation?: 'c2pa-store-removal';
+  operation?: 'c2pa-store-removal' | 'all-metadata-removal';
+  /** Kinds of blocks kept after an all-metadata removal (e.g. ICC). */
+  retainedKinds?: string[];
   mode: CleaningMode;
   blob: Blob;
   scan: Scan;

@@ -1478,6 +1478,85 @@ export async function cleanFootprints(
     return { footprintResult: result('VERIFICATION_FAILED', 'Atomic operation failed; no output released') };
   }
 }
+/**
+ * One-click "remove all metadata": the supported top-level C2PA store (with its local XMP
+ * pointer) and every block that safe mode can remove, including blocks that otherwise need
+ * separate rights consent (EXIF, XMP, IPTC, comments, PNG text). ICC, EXIF that carries a
+ * non-default orientation, and unknown/functional blocks are kept and listed. Same atomic,
+ * fail-closed verification as cleanFootprints; no intermediate output is ever released.
+ */
+export async function cleanAllMetadata(
+  data: Uint8Array,
+): Promise<{ footprintResult: FootprintResult; output?: CleanResult & { retainedKinds: string[] } }> {
+  parse(data);
+  const source = data.slice();
+  const initial = scanImage(source),
+    before = initial.footprints!;
+  const plan: FootprintPlan = { ...initial.footprintPlan!, reasons: [...initial.footprintPlan!.reasons] };
+  const result = (status: FootprintResult['status'], reason: string, after?: FootprintReport): FootprintResult => ({
+    status,
+    before,
+    plan,
+    reason,
+    ...(after ? { after } : {}),
+  });
+  if (initial.cleaningBlocked && !initial.c2paRemovable)
+    return { footprintResult: result('BLOCKED', 'Provenance or metadata that cannot be removed safely is present') };
+  try {
+    let working: Uint8Array = source;
+    let removed = 0;
+    let stage: CleanResult | undefined;
+    const checks: string[] = [],
+      changedFields: ChangedField[] = [];
+    if (initial.c2paRemovable) {
+      const c2pa = await cleanC2pa(working, true);
+      working = c2pa.data;
+      removed += c2pa.removed;
+      checks.push(...c2pa.checks);
+      changedFields.push(...(c2pa.changedFields ?? []));
+      stage = c2pa;
+    }
+    const middle = parse(working);
+    if (middle.scan.cleaningBlocked) throw new Error('Post-C2PA safety blocker');
+    const ids = middle.scan.records.filter(record => isRemovable(record, 'safe')).map(record => record.id);
+    if (!removed && !ids.length) return { footprintResult: result('NOTHING_TO_REMOVE', 'No removable metadata') };
+    if (ids.length) {
+      stage = await cleanImage(working, ids, true, 'safe');
+      removed += stage.removed;
+      checks.push(...stage.checks);
+    }
+    const finalData = stage!.data;
+    const finalScan = scanImage(finalData),
+      after = finalScan.footprints!;
+    if (finalScan.c2pa !== 'not-detected-not-guaranteed' || finalScan.c2paRemovable)
+      throw new Error('Provenance remains');
+    if (finalScan.records.some(record => isRemovable(record, 'safe'))) throw new Error('Removable metadata remains');
+    for (const key of ['format', 'width', 'height', 'alpha', 'orientation'] as const)
+      if (initial[key] !== finalScan[key]) throw new Error('Original/final image properties changed');
+    const original = parse(source),
+      final = parse(finalData);
+    const hash = await payloadHash(final.parts);
+    if ((await payloadHash(original.parts)) !== hash) throw new Error('Original/final payload changed');
+    plan.preserved = finalScan.records.map(r => r.id);
+    const status = after.evidence.length ? 'PARTIALLY_REMOVED' : 'REMOVED_VERIFIED';
+    return {
+      footprintResult: result(status, 'All metadata removal stages verified; retained blocks are listed', after),
+      output: {
+        mode: 'safe',
+        data: finalData,
+        scan: finalScan,
+        removed,
+        retained: finalScan.records.length,
+        retainedKinds: [...new Set(finalScan.records.map(record => record.kind))],
+        payloadHash: hash,
+        changedFields,
+        checks: [...checks, 'All safe-mode removable blocks removed in one verified operation'],
+      },
+    };
+  } catch {
+    return { footprintResult: result('VERIFICATION_FAILED', 'Atomic operation failed; no output released') };
+  }
+}
 export async function verifyOutput(
   data: Uint8Array,
   output: Uint8Array,

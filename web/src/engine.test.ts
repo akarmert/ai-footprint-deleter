@@ -2,7 +2,15 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
-import { scanImage, cleanImage, cleanC2pa, cleanFootprints, verifyOutput, isRemovable } from './engine.ts';
+import {
+  scanImage,
+  cleanImage,
+  cleanC2pa,
+  cleanFootprints,
+  cleanAllMetadata,
+  verifyOutput,
+  isRemovable,
+} from './engine.ts';
 const fixture = (name: string): Uint8Array =>
   new Uint8Array(readFileSync(new URL(`../tests/fixtures/${name}`, import.meta.url)));
 const concat = (...parts: Uint8Array[]): Uint8Array => {
@@ -954,4 +962,65 @@ test('metadata in a secondary MPF image is reported as retained and keeps the re
   const ids = scan.records.filter(r => r.requiresRightsConsent).map(r => r.id);
   const result = await cleanImage(data, ids, true);
   assertMpfConsistent(result.data, [gain]);
+});
+
+// --- cleanAllMetadata ("Tüm Metadata'yı Kaldır") ---
+test('remove all metadata: EXIF needing rights consent goes, ICC stays, payload unchanged', async () => {
+  const data = fixture('image-1.jpg');
+  const before = scanImage(data);
+  assert.ok(before.records.some(r => r.kind === 'EXIF' && r.requiresRightsConsent));
+  const { footprintResult, output } = await cleanAllMetadata(data);
+  assert.ok(output, footprintResult.reason);
+  assert.equal(
+    output.scan.records.some(r => r.kind === 'EXIF'),
+    false,
+  );
+  assert.ok(output.retainedKinds.includes('ICC'));
+  assert.equal(
+    output.scan.records.some(r => isRemovable(r, 'safe')),
+    false,
+  );
+  assert.equal(output.payloadHash, (await cleanImage(data, [], false)).payloadHash);
+});
+for (const ext of ['jpg', 'png', 'webp'] as const)
+  test(`remove all metadata (${ext}): C2PA store and rights metadata removed in one verified operation`, async () => {
+    const original = fixture(`image-1.${ext}`),
+      store = c2paStore();
+    const data =
+      ext === 'jpg'
+        ? jpgInsert(original, 235, app11(store))
+        : ext === 'png'
+          ? pngInsert(original, 'caBX', store)
+          : webpInsert(original, 'C2PA', store);
+    const scan = scanImage(data);
+    assert.equal(scan.c2paRemovable, true);
+    assert.equal(scan.cleaningBlocked, true);
+    const { footprintResult, output } = await cleanAllMetadata(data);
+    assert.ok(output, footprintResult.reason);
+    assert.equal(output.scan.c2pa, 'not-detected-not-guaranteed');
+    assert.equal(
+      output.scan.records.some(r => r.kind === 'C2PA / opaque provenance' || r.kind === 'EXIF'),
+      false,
+    );
+    assert.ok(output.removed >= 2);
+    assert.equal(output.payloadHash, (await cleanImage(original, [], false)).payloadHash);
+  });
+test('remove all metadata keeps EXIF that carries a non-default orientation', async () => {
+  const data = jpgInsert(fixture('image-6.jpg'), 235, app11(c2paStore()));
+  const { footprintResult, output } = await cleanAllMetadata(data);
+  assert.ok(output, footprintResult.reason);
+  assert.equal(output.scan.orientation, 6);
+  assert.ok(output.retainedKinds.includes('EXIF'));
+  assert.equal(output.scan.c2pa, 'not-detected-not-guaranteed');
+});
+test('remove all metadata is blocked for provenance it cannot remove and releases no output', async () => {
+  const data = jpgInsert(fixture('image-1.jpg'), 235, bytes('opaque jumb'));
+  const { footprintResult, output } = await cleanAllMetadata(data);
+  assert.equal(footprintResult.status, 'BLOCKED');
+  assert.equal(output, undefined);
+});
+test('remove all metadata reports nothing to remove for a bare JPEG', async () => {
+  const { footprintResult, output } = await cleanAllMetadata(fixture('progressive.jpg'));
+  assert.equal(footprintResult.status, 'NOTHING_TO_REMOVE');
+  assert.equal(output, undefined);
 });

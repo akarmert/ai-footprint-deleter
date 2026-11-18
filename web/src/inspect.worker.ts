@@ -1,4 +1,4 @@
-import { scanImage, cleanImage, cleanC2pa, cleanFootprints } from './engine';
+import { scanImage, cleanImage, cleanC2pa, cleanFootprints, cleanAllMetadata } from './engine';
 import { validateSelection } from './media';
 import type { Request, Response } from './protocol';
 const scope = self as unknown as {
@@ -22,9 +22,10 @@ scope.onmessage = async ({ data }) => {
       const scan = scanImage(source);
       if (scan.format !== format) throw new Error('Dosya uzantısı ve kapsayıcı formatı uyuşmuyor.');
       scope.postMessage({ type: 'scan', scan });
-    } else if (data.type === 'clean-footprints') {
+    } else if (data.type === 'clean-footprints' || data.type === 'clean-all-metadata') {
       if (!source) throw new Error('Önce görseli yeniden tarayın.');
-      const { footprintResult, output } = await cleanFootprints(source, data);
+      const all = data.type === 'clean-all-metadata';
+      const { footprintResult, output } = all ? await cleanAllMetadata(source) : await cleanFootprints(source, data);
       if (!output) scope.postMessage({ type: 'clean-footprints', footprintResult });
       else {
         const { data: bytes, ...verified } = output;
@@ -32,7 +33,12 @@ scope.onmessage = async ({ data }) => {
         scope.postMessage({
           type: 'clean-footprints',
           footprintResult,
-          output: { ...verified, footprintResult, blob: new Blob([bytes as Uint8Array<ArrayBuffer>], { type: mime }) },
+          output: {
+            ...verified,
+            ...(all ? { operation: 'all-metadata-removal' as const } : {}),
+            footprintResult,
+            blob: new Blob([bytes as Uint8Array<ArrayBuffer>], { type: mime }),
+          },
         });
       }
     } else if (data.type === 'clean' || data.type === 'clean-c2pa') {

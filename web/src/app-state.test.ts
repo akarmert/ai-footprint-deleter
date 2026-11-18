@@ -42,10 +42,22 @@ test('deriveActions: rights-consent records need consent and are excluded from t
     imageScan: undefined,
     footprintPlan: undefined,
     directRemovable: false,
+    allMetadataRemovable: false,
   });
 });
 
 test('deriveActions: blocked scans offer no metadata cleaning', () => {
   const scan = { ...(scanImage(fixture('image-1.jpg')) as MediaScan), cleaningBlocked: true } as MediaScan;
   assert.deepEqual(deriveActions(scan, 'comprehensive').eligible, []);
+});
+
+test('deriveActions: remove-all is available for removable metadata or a removable C2PA store, not for blocked scans', () => {
+  assert.equal(deriveActions(scanImage(fixture('image-1.jpg')) as MediaScan, 'safe').allMetadataRemovable, true);
+  assert.equal(deriveActions(scanImage(fixture('progressive.jpg')) as MediaScan, 'safe').allMetadataRemovable, false);
+  const blocked = {
+    ...(scanImage(fixture('image-1.jpg')) as MediaScan),
+    cleaningBlocked: true,
+    c2paRemovable: false,
+  } as MediaScan;
+  assert.equal(deriveActions(blocked, 'safe').allMetadataRemovable, false);
 });
