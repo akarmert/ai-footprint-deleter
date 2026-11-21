@@ -2,7 +2,9 @@
 
 Medya dosyalarındaki desteklenen metadata ve gömülü C2PA/provenance kayıtlarını inceleyip doğrulanmış, yeniden kodlamasız bir işlemle kaldıran araç. Ürün `web/` altındadır (React + TypeScript + Vite, tamamen tarayıcıda çalışır). Eski Python masaüstü uygulaması `desktop-legacy` etiketinde arşivlidir.
 
-Güncel durum ve açık işler: `docs/history/GELISTIRME_DEVIR_OZETI_2026-11-18.md` (14. ve 15. bölümler).
+Güncel ürün davranışı için `README.md`, kaynak kod ve testler esastır. `docs/history/` yalnız dönemin kararlarını ve eski devir belgelerini içerir; açık iş listesi olarak kullanılmaz.
+
+Açık doğrulamalar: (1) canlı yayın (Railway dağıtımı, HTTPS, `/healthz`, önbellek ve sıkıştırma başlıkları, ağdan medya çıkmadığı); (2) videoda uçtan uca akış (hedef seçme, temizleme, diske yazma, kaydedilen dosyayı yeniden doğrulama) e2e'de tam kapsanmıyor.
 
 ## Komutlar (`web/` içinde, Node 24)
 
@@ -32,14 +34,16 @@ npm start       # dist'i http://localhost:3000 üzerinde sunar
 
 ## Kod haritası (`web/src`)
 
-- `main.tsx` — `App`: onay penceresi, temizleme modu, video kayıt hedefi ve ekran düzeni; `hooks/useMediaJob.ts` — Worker yaşam döngüsü (seçim, tarama, işlem başlatma, 120 s/10 s zaman aşımları, iptal, iptal edilemeyen disk yayınlama, kuşak sayacı, indirme URL'si).
+- `main.tsx` — `App`: ekranı ve eylemleri bağlar (tek temizleme düğmesi, video kayıt hedefi); `hooks/useMediaJob.ts` — Worker yaşam döngüsü (seçim, tarama, işlem başlatma, 120 s/10 s zaman aşımları, iptal, iptal edilemeyen disk yayınlama, kuşak sayacı, indirme URL'si).
 - `app-state.ts` — saf UI türetmeleri (kaldırılacak kayıtlar, Tüm Metadata'yı Kaldır uygunluğu, çıktı dosya adları, boyut biçimi); `hooks/useResultScroll.ts` — sonuca otomatik kaydırma; `components/AdvancedTools.tsx` — salt okunur Ayrıntılar bölümleri (işlem sonucu, kayıt listesi, video geçici alanı).
 - `inspect.worker.ts` / `video.worker.ts` — görsel ve video işleri; sözleşme `protocol.ts`.
 - `engine.ts` — JPEG/PNG/WebP kapsayıcıları, metadata politikası, çıktı doğrulama.
 - `footprints.ts` — AI beyanı / ipucu / provenance ayrımı ve işlem planı.
 - `ai-generator.ts` — yalnız bilgilendirme: dosyada adı geçen AI aracını bulur (C2PA işlem `softwareAgent` > Claim Generator > metadata metni). Silme planını etkilemez.
 - `c2pa.ts`, `cbor.ts`, `c2pa-structure.ts` — C2PA okuma (JPEG APP11, PNG `caBX`, WebP `C2PA`) ve yapı doğrulama; `xmp.ts` — XMP alt kümesi.
-- `video.ts` — MP4/MOV aynı uzunlukta dönüşüm.
+- `video.ts` — MP4/MOV aynı uzunlukta dönüşüm; `video.worker.ts` — geçici alan, doğrulama, diske yazma; `output.ts` — dosya/klasör seçimi.
+- `components/Home.tsx` (ana ekran, SSS), `Atmosphere.tsx` (yıldız alanı; azaltılmış hareket tercihine uyar), `Workspace.tsx` (sonuçlar), `MetadataResults.tsx` (kayıt görünümü).
+- Yayın: `web/server.mjs`, `web/scripts/precompress.mjs`, `web/Dockerfile`, `web/railway.toml`.
 
 ## Kurallar
 
