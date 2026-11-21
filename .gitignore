@@ -1,11 +1,9 @@
-# Yerel Python ortamı (C2PA ölçüm aracı) ve eski masaüstü çıktıları
+# Yerel Python ortamı (C2PA ölçüm aracı)
 .venv/
 __pycache__/
 .pytest_cache/
 *.pyc
-build/
 dist/
-*.spec
 
 # Yerel yedek ve arşivler
 *.zip

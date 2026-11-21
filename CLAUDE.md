@@ -1,6 +1,6 @@
 # AI Footprint Cleaner — çalışma notları
 
-Medya dosyalarındaki desteklenen metadata ve gömülü C2PA/provenance kayıtlarını inceleyip doğrulanmış, yeniden kodlamasız bir işlemle kaldıran araç. Ürün `web/` altındadır (React + TypeScript + Vite, tamamen tarayıcıda çalışır). Eski Python masaüstü uygulaması `desktop-legacy` etiketinde arşivlidir.
+Medya dosyalarındaki desteklenen metadata ve gömülü C2PA/provenance kayıtlarını inceleyip doğrulanmış, yeniden kodlamasız bir işlemle kaldıran araç. Ürün `web/` altındadır (React + TypeScript + Vite, tamamen tarayıcıda çalışır). Eski Python masaüstü uygulaması ana daldan kaldırıldı; son hâli git geçmişinde `b41b838` commit'inde durur (`git show b41b838:main.py`).
 
 Güncel ürün davranışı için `README.md`, kaynak kod ve testler esastır. `docs/history/` yalnız dönemin kararlarını ve eski devir belgelerini içerir; açık iş listesi olarak kullanılmaz.
 

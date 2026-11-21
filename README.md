@@ -54,4 +54,4 @@ Docker imajı yalnız `dist/` ve `server.mjs` içerir; medya işleme sunucuda ya
 
 Sunucu yalnız GET/HEAD kabul eder, dotfile/traversal/symlink isteklerini reddeder ve CSP `connect-src 'none'`, `worker-src 'self'` ile sayfanın dışarıya bağlantı kurmasını engeller. `npm run build` metin dosyalarının `.br`/`.gz` kopyalarını bir kez üretir; sunucu istek sırasında sıkıştırma yapmaz, yalnız uygun kopyayı seçer. Parmak izli `/assets/*` dosyaları bir yıl `immutable` önbelleklenir, `index.html` hiç önbelleklenmez; böylece yeni sürüm anında yüklenir ve tekrar ziyaretlerde sunucuya neredeyse istek gitmez. Altyapı erişim logları statik istek URL'lerini görebilir; dosya adları hiçbir isteğe eklenmez.
 
-Eski Python/PySide6 masaüstü uygulaması ve eski raporlar `desktop-legacy` git etiketinde arşivlidir.
+Eski Python/PySide6 masaüstü uygulaması ve eski raporlar ana daldan kaldırıldı; son hâli git geçmişinde `b41b838` commit'indedir (`git checkout b41b838`).
