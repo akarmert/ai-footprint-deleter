@@ -1,8 +1,9 @@
 import { expect, test, type Page } from '@playwright/test';
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 import { aiJpeg, fixture } from './files.ts';
-import { scanImage, cleanImage } from '../../src/engine.ts';
+import { scanImage, cleanImage, isRemovable } from '../../src/engine.ts';
+import { scanVideo, verifyVideo } from '../../src/video.ts';
 
 // Current-UI browser tests: real production build, real Workers, files given as buffers.
 
@@ -88,11 +89,10 @@ test('narrow screen: no horizontal overflow with results open', async ({ page })
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 
-test('video: MP4 is scanned by the video Worker, offers the same one-click removal and can be cleared', async ({
-  page,
-}, testInfo) => {
-  const path = testInfo.outputPath('clip.mp4');
-  const made = spawnSync(
+// Video tests need ffmpeg (libx264); the video Worker and File System Access are real, only the native save
+// dialog is replaced by an OPFS file handle (a native picker cannot be driven by Playwright).
+function makeClip(path: string) {
+  return spawnSync(
     'ffmpeg',
     [
       ...['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=96x64:rate=10'],
@@ -101,6 +101,13 @@ test('video: MP4 is scanned by the video Worker, offers the same one-click remov
     ],
     { encoding: 'utf8' },
   );
+}
+
+test('video: MP4 is scanned by the video Worker, offers the same one-click removal and can be cleared', async ({
+  page,
+}, testInfo) => {
+  const path = testInfo.outputPath('clip.mp4');
+  const made = makeClip(path);
   test.skip(made.error !== undefined || made.status !== 0, 'ffmpeg (libx264) is not available');
   await page.locator('#media').setInputFiles(path);
   await expect(page.locator('#inspection-title')).toHaveText('Analiz sonucu');
@@ -109,4 +116,76 @@ test('video: MP4 is scanned by the video Worker, offers the same one-click remov
   await expect(page.locator('#all-metadata-scope-note')).toContainText('görüntü ve ses verisine dokunulmaz');
   await page.getByRole('button', { name: 'Seçimi kaldır' }).click();
   await expect(page.locator('.file-details')).toHaveCount(0);
+});
+
+test('video: end to end — save target, removal, write to disk and re-verification of the saved file', async ({
+  page,
+}, testInfo) => {
+  const path = testInfo.outputPath('clip.mp4');
+  const made = makeClip(path);
+  test.skip(made.error !== undefined || made.status !== 0, 'ffmpeg (libx264) is not available');
+  // Stand-in for showSaveFilePicker: the app still receives a real FileSystemFileHandle with createWritable().
+  await page.evaluate(() => {
+    const w = window as unknown as {
+      __picked: string[];
+      showSaveFilePicker: (o: { suggestedName: string }) => unknown;
+    };
+    w.__picked = [];
+    w.showSaveFilePicker = async ({ suggestedName }) => {
+      w.__picked.push(suggestedName);
+      return (await navigator.storage.getDirectory()).getFileHandle('e2e-saved-' + suggestedName, { create: true });
+    };
+  });
+  await page.locator('#media').setInputFiles(path);
+  await expect(page.locator('#footprint-result [role=status] strong').first()).toHaveText('Tarama tamamlandı');
+  await page.locator('#remove-all-metadata').click();
+  await expect(page.locator('.verification')).toContainText('seçtiğin konuma kaydedildi', { timeout: 30_000 });
+  expect(await page.evaluate(() => (window as unknown as { __picked: string[] }).__picked)).toEqual([
+    'clip-removed.mp4',
+  ]);
+
+  // Read the saved file back from disk and verify it independently of the page's own check.
+  const savedBase64 = await page.evaluate(async () => {
+    const file = await (
+      await (await navigator.storage.getDirectory()).getFileHandle('e2e-saved-clip-removed.mp4')
+    ).getFile();
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    let binary = '';
+    for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+    return btoa(binary);
+  });
+  const saved = new Uint8Array(Buffer.from(savedBase64, 'base64'));
+  const original = new Uint8Array(await readFile(path));
+  expect(saved.length).toBe(original.length);
+
+  const before = await scanVideo(new Blob([original]), 'MP4');
+  const ids = before.records.filter(isRemovable).map(r => r.id);
+  expect(ids.length).toBeGreaterThan(0);
+  await verifyVideo(new Blob([original]), new Blob([saved]), before, ids);
+  const after = await scanVideo(new Blob([saved]), 'MP4');
+  expect(after.records.filter(isRemovable)).toHaveLength(0);
+
+  // The saved file still decodes and no longer carries the metadata the source had.
+  const savedPath = testInfo.outputPath('saved.mp4');
+  await writeFile(savedPath, saved);
+  const decode = spawnSync('ffmpeg', ['-v', 'error', '-i', savedPath, '-f', 'null', '-'], { encoding: 'utf8' });
+  expect(decode.status, decode.stderr).toBe(0);
+  const tags = spawnSync('ffmpeg', ['-v', 'error', '-i', savedPath, '-f', 'ffmetadata', '-'], { encoding: 'utf8' });
+  expect(tags.stdout).not.toContain('title=E2E');
+  expect(tags.stdout).not.toContain('copyright=Test');
+});
+
+test('video: cancelling the save dialog writes nothing and keeps the file selectable', async ({ page }, testInfo) => {
+  const path = testInfo.outputPath('clip.mp4');
+  const made = makeClip(path);
+  test.skip(made.error !== undefined || made.status !== 0, 'ffmpeg (libx264) is not available');
+  await page.evaluate(() => {
+    (window as unknown as { showSaveFilePicker: () => Promise<never> }).showSaveFilePicker = () =>
+      Promise.reject(new DOMException('The user aborted a request.', 'AbortError'));
+  });
+  await page.locator('#media').setInputFiles(path);
+  await expect(page.locator('#footprint-result [role=status] strong').first()).toHaveText('Tarama tamamlandı');
+  await page.locator('#remove-all-metadata').click();
+  await expect(page.locator('#remove-all-metadata')).toBeEnabled();
+  await expect(page.locator('.verification')).toHaveCount(0);
 });

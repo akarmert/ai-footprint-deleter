@@ -2,6 +2,7 @@
 
 ## Web — yayımlanmamış
 
+- Test: video uçtan uca e2e testi eklendi (hedef seçme, temizleme, diske yazma, kaydedilen dosyanın `verifyVideo` ve `ffmpeg` ile yeniden doğrulanması) ve kayıt penceresi iptali senaryosu.
 - Altyapı: kullanılmayan `.kilo/` eklentisi ve ilgili `.gitignore` / `.dockerignore` kuralları kaldırıldı.
 - Temizlik: tek akıştan sonra hep `true` gönderilen hak onayı parametresi (`rightsConsent`, `cleanC2pa` onayı) motor, video, Worker protokolü ve testlerden kaldırıldı; seçim doğrulaması (bilinmeyen, korunan, yinelenen kimlik) aynen sürer. Kullanılmayan `writeOutput` ve testi silindi. Birim test sayısı 249 → 248 (silinen yalnız `writeOutput` testi; onay reddi iddiaları mevcut testlerden çıkarıldı).
 - Dokümantasyon: `AGENTS.md` (ortak ajan kuralları) ve `DESIGN.md` (mimari) eklendi; `CLAUDE.md` `AGENTS.md`'yi içe aktarır; `docs/history/` kaldırıldı (geçerli içerik `DESIGN.md`'ye taşındı, geçmiş git'te). Playwright ve kabul betiği `PORT` / `AFC_BASE_URL` ile başka portta çalışabilir.

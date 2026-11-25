@@ -68,10 +68,10 @@ dosya seç/bırak → main.tsx → useMediaJob → Worker (inspect.worker | vide
 
 - Birim testleri `src/**/*.test.ts` ve `server.test.mjs` (Node test runner). Fixture görselleri `web/tests/fixtures` altındadır; `generate_fixtures.py` (Pillow) bunları üretir.
 - Video testleri `ffmpeg` (libx264) ile örnek dosya üretir.
-- Playwright (`web/tests/e2e`): AI görseli tek tık temizleme ve doğrulanmış indirme, EXIF'li fotoğraf, ayrıntılar, okunamayan dosya, ağ isteği olmaması, dar ekran, MP4 tarama, animasyon kabulü.
+- Playwright (`web/tests/e2e`): AI görseli tek tık temizleme ve doğrulanmış indirme, EXIF'li fotoğraf, ayrıntılar, okunamayan dosya, ağ isteği olmaması, dar ekran, MP4 tarama, animasyon kabulü. Video uçtan uca testi gerçek video Worker'ını çalıştırır; yalnız yerel kaydetme penceresi, OPFS dosya tutamacı döndüren bir `showSaveFilePicker` ile değiştirilir. Kaydedilen dosya diskten okunup motorla (`verifyVideo`) ve `ffmpeg` ile (çözülebilirlik, metadata yokluğu) bağımsız doğrulanır; kayıt penceresinin iptali ayrıca denenir.
 - `web/tests/footprints-fixtures.mjs` + `c2pa-sdk-check.py`: 11 halka açık C2PA örneğini ve resmî SDK'yı kullanan ölçüm; `npm test` ile çalışmaz.
 
 ## Açık doğrulamalar
 
 - Canlı yayın (Railway dağıtımı, HTTPS, `/healthz`, önbellek ve sıkıştırma başlıkları, ağdan medya çıkmadığı) bağımsız doğrulanmadı.
-- Video uçtan uca akışı (hedef seçme, temizleme, diske yazma, kaydedilen dosyayı yeniden doğrulama) e2e'de tam kapsanmıyor; gerçek dosya seçicisi ve büyük videolar elle denenmedi.
+- Video: uçtan uca akış e2e'de kapsanıyor, ancak yerel kaydetme penceresi (gerçek dosya seçici), geçici klasör seçimi ve büyük videolar elle denenmedi.
