@@ -137,7 +137,6 @@ async function harness(
     data: {
       type: 'clean',
       ids: ['one'],
-      rightsConsent: true,
       handle: target,
       ...(mode === 'external' || mode === 'external-cleanup' ? { temporaryDirectory: root } : {}),
     },

@@ -684,13 +684,7 @@ export async function scanVideo(file: Blob, format: 'MP4' | 'MOV', check?: () =>
   return (await parseVideo(file, format, check)).scan;
 }
 
-async function selectedPatches(
-  file: Blob,
-  scan: VideoScan,
-  ids: string[],
-  rightsConsent: boolean,
-  check?: () => void,
-): Promise<Patch[]> {
+async function selectedPatches(file: Blob, scan: VideoScan, ids: string[], check?: () => void): Promise<Patch[]> {
   const parsed = await parseVideo(file, scan.format, check);
   if (JSON.stringify(parsed.scan) !== JSON.stringify(scan)) fail('stale or modified scan');
   if (parsed.scan.cleaningBlocked) fail('cleaning blocked');
@@ -703,10 +697,9 @@ async function selectedPatches(
       !record ||
       !replacements ||
       record.status === 'unsupported' ||
-      (record.requiresRightsConsent && rightsConsent !== true) ||
       (!record.requiresRightsConsent && record.status !== 'cleanable')
     )
-      fail('selection/rights consent');
+      fail('invalid selection');
     result.push(...replacements!);
   }
   result.sort((a, b) => a.start - b.start);
@@ -718,10 +711,9 @@ export async function* videoChunks(
   file: Blob,
   scan: VideoScan,
   ids: string[],
-  rightsConsent: boolean,
   check?: () => void,
 ): AsyncGenerator<Uint8Array> {
-  const patches = await selectedPatches(file, scan, ids, rightsConsent, check);
+  const patches = await selectedPatches(file, scan, ids, check);
   let next = 0;
   for (let start = 0; start < file.size; start += CHUNK) {
     check?.();
@@ -746,12 +738,11 @@ export async function verifyVideo(
   output: Blob,
   scan: VideoScan,
   ids: string[],
-  rightsConsent: boolean,
   check?: () => void,
 ): Promise<VideoScan> {
   if (original.size !== output.size) fail('output size changed');
   let position = 0;
-  for await (const expected of videoChunks(original, scan, ids, rightsConsent, check)) {
+  for await (const expected of videoChunks(original, scan, ids, check)) {
     const actual = new Uint8Array(await output.slice(position, position + expected.length).arrayBuffer());
     check?.();
     if (!same(expected, actual)) fail(`output byte mismatch at chunk ${position}`);

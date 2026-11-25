@@ -86,7 +86,7 @@ scope.onmessage = async ({ data }) => {
       temporary = candidate;
       const staging = await stage.createWritable();
       try {
-        for await (const chunk of videoChunks(source, scan, data.ids, data.rightsConsent, check)) {
+        for await (const chunk of videoChunks(source, scan, data.ids, check)) {
           check();
           await staging.write(chunk as Uint8Array<ArrayBuffer>);
         }
@@ -97,7 +97,7 @@ scope.onmessage = async ({ data }) => {
         throw error;
       }
       const staged = await stage.getFile();
-      const verified = await verifyVideo(source, staged, scan, data.ids, data.rightsConsent, check);
+      const verified = await verifyVideo(source, staged, scan, data.ids, check);
       check();
       target = await data.handle.createWritable();
       for (let position = 0; position < staged.size; position += 1024 * 1024) {

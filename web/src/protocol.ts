@@ -30,7 +30,6 @@ export type VideoRequest =
   | {
       type: 'clean';
       ids: string[];
-      rightsConsent: boolean;
       handle: FileSystemFileHandle;
       temporaryDirectory?: FileSystemDirectoryHandle;
     }

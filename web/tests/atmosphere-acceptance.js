@@ -1,4 +1,4 @@
-// Run with Playwright browser_run_code against the production build on localhost:3000.
+// Run with Playwright browser_run_code against the production build (AFC_BASE_URL, default http://localhost:3000).
 async page => {
   // AFC_FIXTURES_DIR: absolute path of web/tests/fixtures in this checkout.
   const env = name => {
@@ -10,7 +10,7 @@ async page => {
     if (!value) throw new Error(message);
   };
   await page.emulateMedia({ reducedMotion: 'no-preference' });
-  await page.goto('http://localhost:3000');
+  await page.goto(globalThis.process?.env?.AFC_BASE_URL ?? 'http://localhost:3000');
   await page.evaluate(() => {
     window.atmosphereFrames = 0;
     window.atmosphereArcs = [];

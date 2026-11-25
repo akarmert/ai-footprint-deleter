@@ -105,7 +105,7 @@ function App() {
       setBusy('clean');
       expire(active);
       const ids = removable.map(record => record.id);
-      active.postMessage({ type: 'clean', ids, rightsConsent: true, handle, temporaryDirectory });
+      active.postMessage({ type: 'clean', ids, handle, temporaryDirectory });
     } catch (cause) {
       if (generation.current === version) {
         operation.current = undefined;

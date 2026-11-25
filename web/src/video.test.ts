@@ -130,7 +130,6 @@ const clean = async (file: Blob, format: 'MP4' | 'MOV' = 'MP4') => {
     file,
     scan,
     scan.records.map(r => r.id),
-    true,
   ))
     chunks.push(chunk);
   const output = new Blob(chunks as BlobPart[]);
@@ -142,7 +141,6 @@ const clean = async (file: Blob, format: 'MP4' | 'MOV' = 'MP4') => {
       output,
       scan,
       scan.records.map(r => r.id),
-      true,
     ),
   };
 };
@@ -182,22 +180,21 @@ test('timestamp v1 and rotation preserved', async () => {
   const { result } = await clean(fixture({ version1: true, rotation: true }));
   assert.equal(result.orientation, 6);
 });
-test('rights consent, duplicate IDs, stale scans and unknown selections fail closed', async () => {
+test('duplicate IDs, stale scans and unknown selections fail closed', async () => {
   const file = fixture(),
     scan = await scanVideo(file, 'MP4'),
     tag = scan.records.find(r => r.kind === '©too')!;
   assert.equal(tag.status, 'protected');
-  const drain = async (ids: string[], rights: boolean, s = scan) => {
-    for await (const chunk of videoChunks(file, s, ids, rights)) assert.ok(chunk);
+  const drain = async (ids: string[], s = scan) => {
+    for await (const chunk of videoChunks(file, s, ids)) assert.ok(chunk);
   };
-  await assert.rejects(drain([tag.id], false), /rights consent/);
-  await assert.rejects(drain([tag.id, tag.id], true), /duplicate/);
-  await assert.rejects(drain(['bogus'], true), /selection/);
-  await assert.rejects(drain([], false, { ...scan, width: 999 }), /stale/);
+  await assert.rejects(drain([tag.id, tag.id]), /duplicate/);
+  await assert.rejects(drain(['bogus']), /selection/);
+  await assert.rejects(drain([], { ...scan, width: 999 }), /stale/);
   const chunks: Uint8Array[] = [];
   const ids = scan.records.filter(r => !r.requiresRightsConsent).map(r => r.id);
-  for await (const c of videoChunks(file, scan, ids, false)) chunks.push(c);
-  const result = await verifyVideo(file, new Blob(chunks as BlobPart[]), scan, ids, false);
+  for await (const c of videoChunks(file, scan, ids)) chunks.push(c);
+  const result = await verifyVideo(file, new Blob(chunks as BlobPart[]), scan, ids);
   assert.deepEqual(result.records, [tag]);
 });
 for (const extra of [
@@ -267,9 +264,9 @@ test('all output bytes independently checked including media, table, header and 
   for (const position of [0, 30, 1024 * 1024, output.size - 1]) {
     const bytes = new Uint8Array(await output.arrayBuffer());
     bytes[position] ^= 1;
-    await assert.rejects(verifyVideo(file, new Blob([bytes]), scan, ids, true), /byte mismatch/);
+    await assert.rejects(verifyVideo(file, new Blob([bytes]), scan, ids), /byte mismatch/);
   }
-  await assert.rejects(verifyVideo(file, output.slice(1), scan, ids, true), /size/);
+  await assert.rejects(verifyVideo(file, output.slice(1), scan, ids), /size/);
 });
 test('incremental Blob reads never exceed 1MiB or read entire file', async () => {
   const original = fixture({ mediaSize: 3 * 1024 * 1024 + 100 });
@@ -294,7 +291,6 @@ test('incremental Blob reads never exceed 1MiB or read entire file', async () =>
     new Guarded([output]),
     scan,
     scan.records.map(r => r.id),
-    true,
   );
   assert.equal(maximum, 1024 * 1024);
   assert.ok(reads > 10);
@@ -341,13 +337,12 @@ test('cooperative cancellation during scanning and output verification rejects',
       output,
       scan,
       scan.records.map(r => r.id),
-      true,
       cancelled,
     ),
     /cancelled/,
   );
   let stop = false;
-  const iterator = videoChunks(file, scan, [], false, () => {
+  const iterator = videoChunks(file, scan, [], () => {
     if (stop) cancelled();
   });
   assert.equal((await iterator.next()).done, false);

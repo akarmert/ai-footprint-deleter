@@ -6,7 +6,7 @@ import type { MediaScan, Request, Response, VerifiedOutput, VideoResponse } from
 export type Busy = '' | 'scan' | 'clean';
 export type Operation = 'clean' | undefined;
 
-/** App-owned state that must be reset together with the job (consent dialog, file input, ...). */
+/** App-owned state that must be reset together with the job (file input, ...). */
 export type JobCallbacks = {
   /** Called synchronously inside every reset of the selection. */
   onReset: () => void;
@@ -19,7 +19,7 @@ export type JobCallbacks = {
 /**
  * Owns one media job: the image or video Worker, its message handling, the 120 s operation and
  * 10 s cancel-close timers, the non-cancellable disk commit phase, selection generations and the
- * verified output's object URL. Logic moved unchanged from App; App keeps consent, mode and the
+ * verified output's object URL. Logic moved unchanged from App; App keeps the
  * video save target.
  */
 export function useMediaJob(callbacks: JobCallbacks) {

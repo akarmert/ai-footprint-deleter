@@ -93,7 +93,7 @@ test('combined JPEG: one operation removes C2PA, its XMP pointer and parameter t
   assert.equal(decoded.includes('Copyright retained'), false);
   assert.equal(decoded.includes('self#jumbf='), false);
   assert.equal(decoded.includes('ComfyUI'), false);
-  assert.equal(result.output!.payloadHash, (await cleanImage(original, [], false)).payloadHash);
+  assert.equal(result.output!.payloadHash, (await cleanImage(original, [])).payloadHash);
   assert.deepEqual(data, copy);
 });
 
@@ -123,7 +123,7 @@ test('C2PA removal also removes independent rights text and the XMP that pointed
     result.output.scan.records.some(r => r.kind === 'Comment' || r.kind === 'XMP'),
     false,
   );
-  assert.equal(result.output.payloadHash, (await cleanImage(base, [], false)).payloadHash);
+  assert.equal(result.output.payloadHash, (await cleanImage(base, [])).payloadHash);
   assert.equal(result.footprintResult.after!.evidence.length, 0);
   assert.deepEqual(
     result.footprintResult.plan.preserved,

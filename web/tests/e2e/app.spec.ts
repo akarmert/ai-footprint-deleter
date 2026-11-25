@@ -15,12 +15,14 @@ async function openAdvanced(page: Page) {
   if (!(await tools.evaluate(el => (el as HTMLDetailsElement).open))) await tools.locator(':scope > summary').click();
 }
 
+const origin = process.env.AFC_BASE_URL ?? 'http://localhost:3000';
+
 test.beforeEach(async ({ page }) => {
   // Privacy boundary: the page may only talk to its own origin.
   page.on('request', request => {
     const url = new URL(request.url());
     if (!['http:', 'https:'].includes(url.protocol)) return;
-    expect(url.origin, `unexpected network request to ${url.href}`).toBe('http://localhost:3000');
+    expect(url.origin, `unexpected network request to ${url.href}`).toBe(origin);
   });
   await page.goto('/');
 });
@@ -46,9 +48,7 @@ test('AI image: tool card, heading, one-click removal and a verified download', 
   const scan = scanImage(output);
   expect(scan.c2pa).toBe('not-detected-not-guaranteed');
   expect(scan.records.map(r => r.kind)).not.toContain('EXIF');
-  expect((await cleanImage(output, [], false)).payloadHash).toBe(
-    (await cleanImage(fixture('image-1.jpg'), [], false)).payloadHash,
-  );
+  expect((await cleanImage(output, [])).payloadHash).toBe((await cleanImage(fixture('image-1.jpg'), [])).payloadHash);
 });
 
 test('ordinary photo with EXIF: "METADATA BULUNDU" and EXIF removed in one click', async ({ page }) => {

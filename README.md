@@ -17,18 +17,21 @@ Görsel ve videolardaki metadata'yı ve gömülü C2PA kaynak kayıtlarını **t
 
 ## Geliştirme (`web/`, Node 24)
 
+Teknoloji: React 19, TypeScript, Vite, Node sunucusu. Ortam değişkeni yalnız `PORT` (varsayılan 3000); Playwright aynı değişkeni okur.
+
 ```bash
 npm ci
+npm run dev                  # Vite geliştirme sunucusu
 npm run lint && npm run format:check
 npm run typecheck:tests
 npm test                     # birim testleri; video testleri PATH'te ffmpeg (libx264) ister
-npm run build
+npm run build                # tsc + vite build + Brotli/gzip
 npx playwright install chromium   # ilk kez
 npm run test:e2e             # tarayıcı testleri (önce build)
-npm start                    # http://localhost:3000 (PORT ile değiştirilebilir)
+npm start                    # dist'i http://localhost:3000 üzerinde sunar
 ```
 
-Kod haritası ve proje kuralları: [`CLAUDE.md`](CLAUDE.md). Değişiklikler: [`CHANGELOG.md`](CHANGELOG.md).
+`npm run format` Prettier yazar. Mimari: [`DESIGN.md`](DESIGN.md). Katkı ve ajan kuralları: [`AGENTS.md`](AGENTS.md). Değişiklikler: [`CHANGELOG.md`](CHANGELOG.md).
 
 ### C2PA örnek dosya ölçümü
 
@@ -52,6 +55,6 @@ Docker imajı yalnız `dist/` ve `server.mjs` içerir; medya işleme sunucuda ya
 | Port | Railway `PORT` değişkeni (varsayılan 3000) |
 | Secrets / Volumes | Gerekmez |
 
-Sunucu yalnız GET/HEAD kabul eder, dotfile/traversal/symlink isteklerini reddeder ve CSP `connect-src 'none'`, `worker-src 'self'` ile sayfanın dışarıya bağlantı kurmasını engeller. `npm run build` metin dosyalarının `.br`/`.gz` kopyalarını bir kez üretir; sunucu istek sırasında sıkıştırma yapmaz, yalnız uygun kopyayı seçer. Parmak izli `/assets/*` dosyaları bir yıl `immutable` önbelleklenir, `index.html` hiç önbelleklenmez; böylece yeni sürüm anında yüklenir ve tekrar ziyaretlerde sunucuya neredeyse istek gitmez. Altyapı erişim logları statik istek URL'lerini görebilir; dosya adları hiçbir isteğe eklenmez.
+Sunucu ve güvenlik başlıklarının ayrıntısı [`DESIGN.md`](DESIGN.md) içindedir. Altyapı erişim logları statik istek URL'lerini görebilir; dosya adları hiçbir isteğe eklenmez.
 
 Eski Python/PySide6 masaüstü uygulaması ve eski raporlar ana daldan kaldırıldı; son hâli git geçmişinde `b41b838` commit'indedir (`git checkout b41b838`).

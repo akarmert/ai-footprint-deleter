@@ -72,14 +72,13 @@ for (const ext of ['jpg', 'png', 'webp']) {
       /Fixture software.*Fixture creator|Fixture creator.*Fixture software/,
     );
     const selected = scan.records.filter(r => r.requiresRightsConsent).map(r => r.id);
-    await assert.rejects(cleanImage(original, selected, false), /onay/);
-    const result = await cleanImage(original, selected, true);
+    const result = await cleanImage(original, selected);
     assert.deepEqual(original, copy);
     assert.equal(result.removed, selected.length);
     assert.equal(result.scan.records.filter(r => r.requiresRightsConsent).length, 0);
     assert.ok(result.scan.records.some(r => r.kind === 'ICC'));
     assert.match(result.payloadHash, /^[a-f0-9]{64}$/);
-    const same = await cleanImage(original, [], false);
+    const same = await cleanImage(original, []);
     assert.deepEqual(same.data, original);
     assert.equal(result.payloadHash, same.payloadHash);
     if (ext === 'png')
@@ -91,11 +90,10 @@ for (const ext of ['jpg', 'png', 'webp']) {
       exif = scan.records.find(r => r.kind === 'EXIF')!;
     assert.equal(scan.orientation, 6);
     assert.equal(exif.status, 'protected');
-    await assert.rejects(cleanImage(data, [exif.id], true));
+    await assert.rejects(cleanImage(data, [exif.id]));
     const result = await cleanImage(
       data,
       scan.records.filter(r => r.requiresRightsConsent).map(r => r.id),
-      true,
     );
     assert.equal(result.scan.orientation, 6);
   });
@@ -111,17 +109,16 @@ for (const ext of ['jpg', 'png', 'webp'])
       cleanImage(
         data,
         icc.map(r => r.id),
-        true,
       ),
       /korunan/,
     );
     const ids = scan.records.filter(r => isRemovable(r)).map(r => r.id);
-    const result = await cleanImage(data, ids, true);
+    const result = await cleanImage(data, ids);
     assert.ok(result.scan.records.some(r => r.kind === 'ICC'));
-    assert.equal(result.payloadHash, (await cleanImage(data, [], false)).payloadHash);
+    assert.equal(result.payloadHash, (await cleanImage(data, [])).payloadHash);
     const bad = result.data.slice();
     bad[bad.length - 4]! ^= 1;
-    await assert.rejects(verifyOutput(data, bad, ids, true));
+    await assert.rejects(verifyOutput(data, bad, ids));
   });
 test('JFIF is never removable', () => {
   for (const data of [fixture('progressive.jpg'), jpgInsert(fixture('progressive.jpg'), 224, bytes('JFIF\0broken'))])
@@ -137,7 +134,6 @@ test('metadata removal rejects provenance in every format', async () => {
       cleanImage(
         data,
         scanImage(data).records.map(r => r.id),
-        true,
       ),
       /provenance/,
     );
@@ -153,8 +149,7 @@ test('caller IDs, duplicate selection, protected ICC, consent type', async () =>
     scan = scanImage(data),
     id = scan.records.find(r => r.requiresRightsConsent)!.id;
   for (const ids of [['missing'], [id, id], [scan.records.find(r => r.kind === 'ICC')!.id]])
-    await assert.rejects(cleanImage(data, ids, true));
-  await assert.rejects(cleanImage(data, [], 'yes' as unknown as boolean));
+    await assert.rejects(cleanImage(data, ids));
 });
 test('C2PA and opaque APP11 block ANY cleaning including no-op', async () => {
   for (const data of [
@@ -165,7 +160,7 @@ test('C2PA and opaque APP11 block ANY cleaning including no-op', async () => {
     const scan = scanImage(data);
     assert.equal(scan.c2pa, 'detected-not-verified');
     assert.equal(scan.cleaningBlocked, true);
-    await assert.rejects(cleanImage(data, [], true), /provenance/);
+    await assert.rejects(cleanImage(data, []), /provenance/);
   }
 });
 test('text provenance blocks, unknown chunks retained', async () => {
@@ -175,7 +170,6 @@ test('text provenance blocks, unknown chunks retained', async () => {
   const result = await cleanImage(
     data,
     scan.records.filter(r => r.kind === 'PNG text').map(r => r.id),
-    true,
   );
   assert.ok(result.scan.records.some(r => r.kind === 'vpAg'));
   assert.equal(scanImage(pngInsert(data, 'tEXt', bytes('Comment\0c2pa manifest'))).cleaningBlocked, true);
@@ -184,14 +178,14 @@ test('compressed PNG text unsupported and protected', async () => {
   const data = pngInsert(fixture('image-1.png'), 'zTXt', new Uint8Array([65, 0, 0, 120, 156, 0]));
   const r = scanImage(data).records.find(r => r.kind === 'Compressed PNG text')!;
   assert.equal(r.status, 'unsupported');
-  await assert.rejects(cleanImage(data, [r.id], true));
+  await assert.rejects(cleanImage(data, [r.id]));
 });
 test('unknown EXIF parsing protected', async () => {
   const data = jpgInsert(fixture('progressive.jpg'), 225, bytes('Exif\0\0broken'));
   const scan = scanImage(data);
   assert.equal(scan.orientation, null);
   assert.equal(scan.records[0]!.status, 'protected');
-  await assert.rejects(cleanImage(data, [scan.records[0]!.id], true));
+  await assert.rejects(cleanImage(data, [scan.records[0]!.id]));
 });
 test('XMP orientation and rights protected conservatively', async () => {
   const data = jpgInsert(
@@ -201,15 +195,14 @@ test('XMP orientation and rights protected conservatively', async () => {
   );
   const r = scanImage(data).records[0]!;
   assert.equal(r.status, 'protected');
-  await assert.rejects(cleanImage(data, [r.id], true));
+  await assert.rejects(cleanImage(data, [r.id]));
   const ordinary = jpgInsert(
     fixture('progressive.jpg'),
     225,
     bytes('http://ns.adobe.com/xap/1.0/\0<dc:rights>copyright</dc:rights>'),
   );
   const id = scanImage(ordinary).records[0]!.id;
-  await assert.rejects(cleanImage(ordinary, [id], false));
-  assert.equal((await cleanImage(ordinary, [id], true)).removed, 1);
+  assert.equal((await cleanImage(ordinary, [id])).removed, 1);
 });
 test('PNG CRC/order/critical/animation/trailing/truncation rejected', () => {
   const data = fixture('image-1.png'),
@@ -258,7 +251,7 @@ test('post-scan JPEG comment removed without recompression', async () => {
     segment = new Uint8Array([255, 254, 0, 6, 116, 101, 115, 116]);
   const data = concat(source.subarray(0, source.length - 2), segment, source.subarray(source.length - 2));
   const r = scanImage(data).records.find(r => r.kind === 'Comment')!;
-  assert.deepEqual((await cleanImage(data, [r.id], true)).data, source);
+  assert.deepEqual((await cleanImage(data, [r.id])).data, source);
 });
 test('embedded PNG XMP orientation and oversized text cannot be removed', async () => {
   for (const payload of [
@@ -270,7 +263,7 @@ test('embedded PNG XMP orientation and oversized text cannot be removed', async 
     const r = scanImage(data).records.find(r => r.kind === 'PNG text' || r.kind === 'XMP')!;
     assert.equal(r.status, 'protected');
     assert.equal(r.requiresRightsConsent, false);
-    await assert.rejects(cleanImage(data, [r.id], true));
+    await assert.rejects(cleanImage(data, [r.id]));
   }
 });
 test('cyclic TIFF, duplicate EXIF and malformed ICC rejected or permanently protected', async () => {
@@ -280,7 +273,7 @@ test('cyclic TIFF, duplicate EXIF and malformed ICC rejected or permanently prot
   const dup = jpgInsert(fixture('image-1.jpg'), 225, concat(bytes('Exif\0\0'), tiff));
   for (const r of scanImage(dup).records.filter(r => r.kind === 'EXIF')) {
     assert.equal(r.requiresRightsConsent, false);
-    await assert.rejects(cleanImage(dup, [r.id], true));
+    await assert.rejects(cleanImage(dup, [r.id]));
   }
   assert.throws(() => scanImage(pngInsert(fixture('palette.png'), 'iCCP', bytes('invalid'))));
 });
@@ -304,7 +297,7 @@ test('UTF16/32 XMP orientation and provenance cannot bypass guards', async () =>
           concat(bytes('http://ns.adobe.com/xap/1.0/\0'), encoded),
         );
         assert.equal(scanImage(data).cleaningBlocked, true);
-        await assert.rejects(cleanImage(data, [], true));
+        await assert.rejects(cleanImage(data, []));
       }
 });
 test('invalid UTF8, entities and nonUTF8 declarations block opaque XMP', async () => {
@@ -316,7 +309,7 @@ test('invalid UTF8, entities and nonUTF8 declarations block opaque XMP', async (
   ]) {
     const data = jpgInsert(fixture('progressive.jpg'), 225, concat(bytes('http://ns.adobe.com/xap/1.0/\0'), xml));
     assert.equal(scanImage(data).cleaningBlocked, true);
-    await assert.rejects(cleanImage(data, [], true));
+    await assert.rejects(cleanImage(data, []));
   }
 });
 test('provenance detection precedes oversized/raw/compressed text guards', async () => {
@@ -327,7 +320,7 @@ test('provenance detection precedes oversized/raw/compressed text guards', async
   ]) {
     const data = pngInsert(fixture('palette.png'), 'tEXt', payload);
     assert.equal(scanImage(data).c2pa, 'detected-not-verified');
-    await assert.rejects(cleanImage(data, [], true));
+    await assert.rejects(cleanImage(data, []));
   }
   const compressed = pngInsert(
     fixture('palette.png'),
@@ -335,15 +328,15 @@ test('provenance detection precedes oversized/raw/compressed text guards', async
     concat(bytes('XML:com.adobe.xmp\0'), new Uint8Array([0, 120, 156, 0])),
   );
   assert.equal(scanImage(compressed).cleaningBlocked, true);
-  await assert.rejects(cleanImage(compressed, [], true));
+  await assert.rejects(cleanImage(compressed, []));
 });
 test('independent verification rejects malicious retained payload and metadata bytes', async () => {
   const original = fixture('image-1.png'),
     ids = scanImage(original)
       .records.filter(r => r.kind === 'PNG text')
       .map(r => r.id),
-    good = (await cleanImage(original, ids, true)).data;
-  assert.equal((await verifyOutput(original, good, ids, true)).removed, ids.length);
+    good = (await cleanImage(original, ids)).data;
+  assert.equal((await verifyOutput(original, good, ids)).removed, ids.length);
   for (const kind of ['IDAT', 'iCCP']) {
     const bad = good.slice();
     for (let p = 8; p < bad.length;) {
@@ -355,16 +348,15 @@ test('independent verification rejects malicious retained payload and metadata b
       }
       p += n + 12;
     }
-    await assert.rejects(verifyOutput(original, bad, ids, true), /baytları/);
+    await assert.rejects(verifyOutput(original, bad, ids), /baytları/);
   }
-  await assert.rejects(verifyOutput(original, good, [], true));
-  await assert.rejects(verifyOutput(original, good, ids, false));
+  await assert.rejects(verifyOutput(original, good, []));
 });
 test('hash rejection never returns a verified result', async () => {
   const digest = globalThis.crypto.subtle.digest;
   globalThis.crypto.subtle.digest = (() => Promise.reject(new Error('fixture hash failure'))) as typeof digest;
   try {
-    await assert.rejects(cleanImage(fixture('palette.png'), [], true), /fixture hash failure/);
+    await assert.rejects(cleanImage(fixture('palette.png'), []), /fixture hash failure/);
   } finally {
     globalThis.crypto.subtle.digest = digest;
   }
@@ -414,11 +406,9 @@ for (const ext of ['jpg', 'png', 'webp'])
       scan = scanImage(data);
     assert.equal(scan.c2paRemovable, true);
     assert.equal(scan.cleaningBlocked, true);
-    for (const consent of [false, undefined, 'true', 1])
-      await assert.rejects(cleanC2pa(data, consent as boolean), /onay/);
-    await assert.rejects(cleanImage(data, [], true));
-    await assert.rejects(verifyOutput(data, original, [], true));
-    const result = await cleanC2pa(data, true);
+    await assert.rejects(cleanImage(data, []));
+    await assert.rejects(verifyOutput(data, original, []));
+    const result = await cleanC2pa(data);
     assert.deepEqual(result.data, original);
     assert.deepEqual(data, copy);
     assert.equal(result.operation, 'c2pa-store-removal');
@@ -426,7 +416,7 @@ for (const ext of ['jpg', 'png', 'webp'])
     assert.equal(result.scan.cleaningBlocked, false);
     assert.equal(result.scan.c2pa, 'not-detected-not-guaranteed');
     assert.equal(result.scan.orientation, 6);
-    assert.equal(result.payloadHash, (await cleanImage(original, [], false)).payloadHash);
+    assert.equal(result.payloadHash, (await cleanImage(original, [])).payloadHash);
   });
 test('C2PA removal rejects mixed independent blockers regardless of metadata order', async () => {
   const base = jpgInsert(fixture('progressive.jpg'), 235, app11(c2paStore()));
@@ -437,7 +427,7 @@ test('C2PA removal rejects mixed independent blockers regardless of metadata ord
   ]) {
     const data = jpgInsert(base, 225, payload);
     assert.equal(scanImage(data).c2paRemovable, false);
-    await assert.rejects(cleanC2pa(data, true));
+    await assert.rejects(cleanC2pa(data));
   }
   for (const [kind, payload] of [
     ['zTXt', new Uint8Array([65, 0, 0, 120, 156, 0])],
@@ -447,7 +437,7 @@ test('C2PA removal rejects mixed independent blockers regardless of metadata ord
   ] as const) {
     const data = pngInsert(pngInsert(fixture('palette.png'), kind, payload), 'caBX', c2paStore());
     assert.equal(scanImage(data).c2paRemovable, false);
-    await assert.rejects(cleanC2pa(data, true));
+    await assert.rejects(cleanC2pa(data));
   }
 });
 test('malformed unbound XMP self pointer remains blocked, not a second APP11 store part', async () => {
@@ -467,8 +457,8 @@ test('malformed unbound XMP self pointer remains blocked, not a second APP11 sto
     assert.equal(scan.c2paDecision?.code, 'BLOCKED_MALFORMED_METADATA');
     assert.equal(scan.cleaningBlocked, true);
     assert.equal(scan.c2paRemovable, false);
-    await assert.rejects(cleanC2pa(data, true), /diğer provenance/);
-    await assert.rejects(cleanImage(data, [], true), /provenance/);
+    await assert.rejects(cleanC2pa(data), /diğer provenance/);
+    await assert.rejects(cleanImage(data, []), /provenance/);
   }
 });
 function referenceStore(): Uint8Array {
@@ -504,9 +494,8 @@ for (const ext of ['jpg', 'png', 'webp'])
       scan = scanImage(data);
     assert.equal(scan.c2paDecision?.code, 'SUPPORTED_WITH_LOCAL_XMP_REFERENCE');
     assert.equal(scan.cleaningBlocked, true);
-    await assert.rejects(cleanImage(data, [], true));
-    await assert.rejects(cleanC2pa(data, false));
-    const result = await cleanC2pa(data, true);
+    await assert.rejects(cleanImage(data, []));
+    const result = await cleanC2pa(data);
     assert.deepEqual(data, copy);
     assert.equal(result.changedFields?.length, 1);
     assert.equal(result.removed, 1);
@@ -515,7 +504,7 @@ for (const ext of ['jpg', 'png', 'webp'])
     assert.equal(result.scan.orientation, 6);
     assert.ok(new TextDecoder().decode(result.data).includes('A &amp; B — Türkçe'));
     assert.equal(new TextDecoder().decode(result.data).includes('self#jumbf='), false);
-    assert.equal(result.payloadHash, (await cleanImage(original, [], false)).payloadHash);
+    assert.equal(result.payloadHash, (await cleanImage(original, [])).payloadHash);
   });
 test('external, repeated and mismatching XMP references stay blocked with reason codes', async () => {
   const base = jpgInsert(fixture('progressive.jpg'), 235, app11(referenceStore()));
@@ -530,7 +519,7 @@ test('external, repeated and mismatching XMP references stay blocked with reason
   ]) {
     const data = jpgInsert(base, 225, concat(bytes('http://ns.adobe.com/xap/1.0/\0'), localXmp(value, extra)));
     assert.equal(scanImage(data).c2paDecision?.code, code);
-    await assert.rejects(cleanC2pa(data, true));
+    await assert.rejects(cleanC2pa(data));
   }
 });
 test('multiple packets and separate valid provenance properties cannot be partially removed', async () => {
@@ -538,20 +527,20 @@ test('multiple packets and separate valid provenance properties cannot be partia
   const packet = concat(bytes('http://ns.adobe.com/xap/1.0/\0'), localXmp());
   const multiple = jpgInsert(jpgInsert(base, 225, packet), 225, packet);
   assert.equal(scanImage(multiple).c2paDecision?.code, 'BLOCKED_AMBIGUOUS_PROVENANCE');
-  await assert.rejects(cleanC2pa(multiple, true));
+  await assert.rejects(cleanC2pa(multiple));
   const xml = new TextDecoder()
     .decode(localXmp())
     .replace('/></rdf:RDF>', '><p:provenance>self#jumbf=/c2pa/manifest</p:provenance></rdf:Description></rdf:RDF>');
   const repeated = jpgInsert(base, 225, concat(bytes('http://ns.adobe.com/xap/1.0/\0'), bytes(xml)));
   assert.equal(scanImage(repeated).c2paDecision?.code, 'BLOCKED_AMBIGUOUS_PROVENANCE');
-  await assert.rejects(cleanC2pa(repeated, true));
+  await assert.rejects(cleanC2pa(repeated));
 });
 test('PNG uncompressed iTXt XMP local reference preserves language header and semantic fields', async () => {
   const header = bytes('XML:com.adobe.xmp\0\0\0en\0Description\0'),
     xml = localXmp();
   const data = pngInsert(pngInsert(fixture('palette.png'), 'iTXt', concat(header, xml)), 'caBX', referenceStore());
   assert.equal(scanImage(data).c2paRemovable, true);
-  const result = await cleanC2pa(data, true);
+  const result = await cleanC2pa(data);
   assert.ok(new TextDecoder().decode(result.data).includes('en\0Description\0'));
   assert.equal(result.scan.cleaningBlocked, false);
 });
@@ -565,7 +554,7 @@ test('decoded XMP hints and container headers cannot bypass conservative guards'
     const data = jpgInsert(base, 225, concat(bytes('http://ns.adobe.com/xap/1.0/\0'), wrap(value)));
     const scan = scanImage(data);
     assert.equal(scan.records[0]!.status, 'protected');
-    await assert.rejects(cleanImage(data, [scan.records[0]!.id], true));
+    await assert.rejects(cleanImage(data, [scan.records[0]!.id]));
     const withStore = jpgInsert(data, 235, app11(referenceStore()));
     assert.equal(scanImage(withStore).c2paRemovable, false);
   }
@@ -624,7 +613,7 @@ test('C2PA store rejects malformed UUID/length, duplicate and misplaced containe
     ),
   ]) {
     assert.equal(scanImage(data).c2paRemovable, false);
-    await assert.rejects(cleanC2pa(data, true));
+    await assert.rejects(cleanC2pa(data));
   }
 });
 test('JPEG split APP11 store is all-or-nothing, consistent and contiguous', async () => {
@@ -637,7 +626,7 @@ test('JPEG split APP11 store is all-or-nothing, consistent and contiguous', asyn
     app11(store, 1, store.subarray(8, split)),
   );
   assert.equal(scanImage(good).c2paRemovable, true);
-  const result = await cleanC2pa(good, true);
+  const result = await cleanC2pa(good);
   assert.equal(result.removed, 2);
   assert.deepEqual(result.data, jpg);
   const separated = jpgInsert(
@@ -646,7 +635,7 @@ test('JPEG split APP11 store is all-or-nothing, consistent and contiguous', asyn
     app11(store, 1, store.subarray(8, split)),
   );
   assert.equal(scanImage(separated).c2paRemovable, false);
-  await assert.rejects(cleanC2pa(separated, true));
+  await assert.rejects(cleanC2pa(separated));
 });
 test('preview and count limits', () => {
   const data = pngInsert(fixture('palette.png'), 'tEXt', bytes('Comment\0' + 'x'.repeat(10000)));
@@ -775,12 +764,12 @@ for (const little of [false, true])
     // Removing EXIF shrinks the primary; the MPF primary size and secondary offset follow it.
     const ids = scan.records.filter(r => r.requiresRightsConsent).map(r => r.id);
     assert.ok(ids.length > 0);
-    const result = await cleanImage(data, ids, true);
+    const result = await cleanImage(data, ids);
     assert.ok(result.data.length < data.length);
     assertMpfConsistent(result.data, [gain]);
     assert.equal(mpfEntries(result.data).little, little);
-    assert.equal(result.payloadHash, (await cleanImage(data, [], false)).payloadHash);
-    await verifyOutput(data, result.data, ids, true);
+    assert.equal(result.payloadHash, (await cleanImage(data, [])).payloadHash);
+    await verifyOutput(data, result.data, ids);
   });
 test('MPF with two secondary images keeps both byte-identical after cleaning', async () => {
   const a = fixture('progressive.jpg'),
@@ -789,7 +778,7 @@ test('MPF with two secondary images keeps both byte-identical after cleaning', a
   const ids = scanImage(data)
     .records.filter(r => r.requiresRightsConsent)
     .map(r => r.id);
-  assertMpfConsistent((await cleanImage(data, ids, true)).data, [a, b]);
+  assertMpfConsistent((await cleanImage(data, ids)).data, [a, b]);
 });
 for (const order of ['APP11 after MPF', 'APP11 before MPF'] as const)
   test(`MPF + C2PA (${order}): store removal rewrites only MPF size/offset fields`, async () => {
@@ -800,7 +789,7 @@ for (const order of ['APP11 after MPF', 'APP11 before MPF'] as const)
     const data = order === 'APP11 after MPF' ? mpfFile(primary, [gain]) : mpfFile(primary, [gain], { at: 2 + segment });
     const scan = scanImage(data);
     assert.equal(scan.c2paRemovable, true, scan.c2paDecision?.reason);
-    const result = await cleanC2pa(data, true);
+    const result = await cleanC2pa(data);
     assert.equal(result.removed, 1);
     assertMpfConsistent(result.data, [gain]);
     assert.equal(result.data.length, data.length - segment);
@@ -846,7 +835,7 @@ test('MPF segment without described images blocks cleaning and C2PA removal', as
   const scan = scanImage(data);
   assert.equal(scan.cleaningBlocked, true);
   assert.equal(scan.c2paRemovable, false);
-  await assert.rejects(cleanC2pa(data, true));
+  await assert.rejects(cleanC2pa(data));
 });
 test('provenance or AI declarations inside a secondary image are reported and block removal', async () => {
   const gain = jpgInsert(fixture('progressive.jpg'), 235, app11(c2paStore()));
@@ -854,7 +843,7 @@ test('provenance or AI declarations inside a secondary image are reported and bl
   const scan = scanImage(data);
   assert.equal(scan.cleaningBlocked, true);
   assert.equal(scan.c2paRemovable, false);
-  await assert.rejects(cleanC2pa(data, true));
+  await assert.rejects(cleanC2pa(data));
   const xmp = concat(
     bytes('http://ns.adobe.com/xap/1.0/\0'),
     bytes(
@@ -892,7 +881,7 @@ test('metadata in a secondary MPF image is reported as retained and keeps the re
   assert.match(scan.records.find(r => r.kind === 'MPF')!.reason, /ek görüntülerdeki EXIF/);
   assert.ok(scan.notes.some(n => /Ek görüntülerde EXIF/.test(n)));
   const ids = scan.records.filter(r => r.requiresRightsConsent).map(r => r.id);
-  const result = await cleanImage(data, ids, true);
+  const result = await cleanImage(data, ids);
   assertMpfConsistent(result.data, [gain]);
 });
 
@@ -912,7 +901,7 @@ test('remove all metadata: EXIF needing rights consent goes, ICC stays, payload 
     output.scan.records.some(r => isRemovable(r)),
     false,
   );
-  assert.equal(output.payloadHash, (await cleanImage(data, [], false)).payloadHash);
+  assert.equal(output.payloadHash, (await cleanImage(data, [])).payloadHash);
 });
 for (const ext of ['jpg', 'png', 'webp'] as const)
   test(`remove all metadata (${ext}): C2PA store and rights metadata removed in one verified operation`, async () => {
@@ -935,7 +924,7 @@ for (const ext of ['jpg', 'png', 'webp'] as const)
       false,
     );
     assert.ok(output.removed >= 2);
-    assert.equal(output.payloadHash, (await cleanImage(original, [], false)).payloadHash);
+    assert.equal(output.payloadHash, (await cleanImage(original, [])).payloadHash);
   });
 test('remove all metadata keeps EXIF that carries a non-default orientation', async () => {
   const data = jpgInsert(fixture('image-6.jpg'), 235, app11(c2paStore()));

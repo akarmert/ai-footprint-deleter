@@ -2,6 +2,8 @@
 
 ## Web — yayımlanmamış
 
+- Temizlik: tek akıştan sonra hep `true` gönderilen hak onayı parametresi (`rightsConsent`, `cleanC2pa` onayı) motor, video, Worker protokolü ve testlerden kaldırıldı; seçim doğrulaması (bilinmeyen, korunan, yinelenen kimlik) aynen sürer. Kullanılmayan `writeOutput` ve testi silindi. Birim test sayısı 249 → 248 (silinen yalnız `writeOutput` testi; onay reddi iddiaları mevcut testlerden çıkarıldı).
+- Dokümantasyon: `AGENTS.md` (ortak ajan kuralları) ve `DESIGN.md` (mimari) eklendi; `CLAUDE.md` `AGENTS.md`'yi içe aktarır; `docs/history/` kaldırıldı (geçerli içerik `DESIGN.md`'ye taşındı, geçmiş git'te). Playwright ve kabul betiği `PORT` / `AFC_BASE_URL` ile başka portta çalışabilir.
 - Production: `/assets/*` bir yıl `immutable` önbelleklenir, `index.html` önbelleklenmez; derlemede Brotli/gzip kopyaları üretilir ve sunucu yalnız seçer (ana JS 265 KB → 73 KB). Favicon eklendi.
 - Kullanıcıya görünen bütün Türkçe metinler gözden geçirildi: ana sayfa, sonuçlar, kayıt gerekçeleri ve hata mesajları kısa, tek üslupta; teknik ayrıştırıcı hataları anlaşılır bir cümleyle sarılır.
 - Tek akış: görsel ve videoda yalnız „Tüm Metadata'yı Kaldır" düğmesi var. Onay penceresi, Güvenli/Kapsamlı mod seçimi, „Yalnız C2PA'yı Kaldır" ve ayrı metadata temizliği kaldırıldı; Ayrıntılar bölümü yalnız bilgi gösterir. Kullanılmayan motor kodu (`cleanFootprints`, kapsamlı mod, eski Worker mesajları) silindi.

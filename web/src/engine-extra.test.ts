@@ -121,8 +121,7 @@ test('genuine JPEG with XMP CreatorTool, model, prompt and seed: preview, consen
     data = insert(original, 225, xmp),
     record = scanImage(data).records.find(r => r.kind === 'XMP')!;
   assert.match(record.preview, /CreatorTool.*test-model.*blue mountain.*42/);
-  await assert.rejects(cleanImage(data, [record.id], false), /onay/);
-  const result = await cleanImage(data, [record.id], true);
+  const result = await cleanImage(data, [record.id]);
   assert.deepEqual(result.data, original);
   assert.equal(result.removed, 1);
 });
@@ -146,8 +145,7 @@ test('genuine JPEG Photoshop IPTC copyright resource remains unless explicitly a
   assert.equal(record.status, 'protected');
   assert.equal(record.requiresRightsConsent, true);
   assert.match(record.preview, /Copyright fixture owner/);
-  await assert.rejects(cleanImage(data, [record.id], false));
-  assert.deepEqual((await cleanImage(data, [record.id], true)).data, original);
+  assert.deepEqual((await cleanImage(data, [record.id])).data, original);
 });
 
 test('crc32 (slicing-by-8) matches zlib for every length and alignment', async () => {

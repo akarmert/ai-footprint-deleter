@@ -277,7 +277,7 @@ function selfTest() {
   console.log(`Self-test passed: ${cases.length} failure cases and 2 success controls`);
 }
 async function main(args) {
-  const { scanImage, cleanFootprints } = await import('../src/engine.ts');
+  const { scanImage, cleanAllMetadata } = await import('../src/engine.ts');
   if (!(args.length === 1 && args[0] === '--download') && !(args.length === 2 && args[0] === '--cache'))
     throw new Error('Use --download or --cache <directory>');
   if (args[0] === '--download') await mkdir(parent, { recursive: true });
@@ -332,7 +332,7 @@ async function main(args) {
         plan: scan.footprintPlan,
       };
       row.sourcePayloadSha256 = payload(data, scan.format);
-      const result = await cleanFootprints(data, { c2paConsent: true, rightsConsent: true });
+      const result = await cleanAllMetadata(data);
       row.result = result.footprintResult;
       if (result.output) {
         const output = Buffer.from(result.output.data),

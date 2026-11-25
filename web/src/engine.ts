@@ -1197,27 +1197,25 @@ function patchedXmpBlock(source: Uint8Array, format: Scan['format'], patch: XmpP
   out.set(payload, 8);
   return out;
 }
-function selection(before: Parsed, ids: string[], rightsConsent: boolean): Set<string> {
+function selection(before: Parsed, ids: string[]): Set<string> {
   if (before.scan.cleaningBlocked) fail('C2PA / opaque provenance: tüm temizlik engellendi');
   if (
     !Array.isArray(ids) ||
     ids.length > MAX_PARTS ||
     ids.some(id => typeof id !== 'string') ||
-    new Set(ids).size !== ids.length ||
-    typeof rightsConsent !== 'boolean'
+    new Set(ids).size !== ids.length
   )
     fail('Geçersiz veya yinelenen seçim');
   const selected = new Set(ids);
   for (const id of selected) {
     const record = before.scan.records.find(r => r.id === id);
     if (!record || !isRemovable(record)) fail('Bilinmeyen veya korunan seçim');
-    if (record!.requiresRightsConsent && !rightsConsent) fail('Hak bilgisi kaldırma onayı gerekli');
   }
   return selected;
 }
-export async function cleanImage(data: Uint8Array, ids: string[], rightsConsent: boolean): Promise<CleanResult> {
+export async function cleanImage(data: Uint8Array, ids: string[]): Promise<CleanResult> {
   const before = parse(data);
-  const selected = selection(before, ids, rightsConsent);
+  const selected = selection(before, ids);
   const retained = before.parts.filter(p => !p.record || !selected.has(p.record.id));
   const length = before.header + retained.reduce((n, p) => n + p.end - p.start, 0);
   if (length > MAX) fail('Çıktı sınırı');
@@ -1238,13 +1236,9 @@ export async function cleanImage(data: Uint8Array, ids: string[], rightsConsent:
     pos += part.end - part.start;
   }
   if (before.scan.format === 'WebP') new DataView(output.buffer).setUint32(4, output.length - 8, true);
-  return verifyOutput(data, output, ids, rightsConsent);
+  return verifyOutput(data, output, ids);
 }
-export async function cleanC2pa(
-  data: Uint8Array,
-  consent: boolean,
-): Promise<CleanResult & { operation: 'c2pa-store-removal' }> {
-  if (consent !== true) fail('C2PA store kaldırma için açık onay gerekli');
+export async function cleanC2pa(data: Uint8Array): Promise<CleanResult & { operation: 'c2pa-store-removal' }> {
   // Snapshot before any await: caller mutation cannot change verification inputs.
   parse(data);
   const source = data.slice(),
@@ -1315,10 +1309,9 @@ export async function cleanC2pa(
 }
 /**
  * One-click "remove all metadata": the supported top-level C2PA store (with its local XMP
- * pointer) and every block that safe mode can remove, including blocks that otherwise need
- * separate rights consent (EXIF, XMP, IPTC, comments, PNG text). ICC, EXIF that carries a
- * non-default orientation, and unknown/functional blocks are kept and listed. Same atomic,
- * fail-closed verification as cleanFootprints; no intermediate output is ever released.
+ * pointer) and every other removable block (EXIF, XMP, IPTC, comments, PNG text, rights
+ * records). ICC, EXIF that carries a non-default orientation, and unknown/functional blocks
+ * are kept and listed. Atomic and fail-closed: no intermediate output is ever released.
  */
 export async function cleanAllMetadata(
   data: Uint8Array,
@@ -1344,7 +1337,7 @@ export async function cleanAllMetadata(
     const checks: string[] = [],
       changedFields: ChangedField[] = [];
     if (initial.c2paRemovable) {
-      const c2pa = await cleanC2pa(working, true);
+      const c2pa = await cleanC2pa(working);
       working = c2pa.data;
       removed += c2pa.removed;
       checks.push(...c2pa.checks);
@@ -1356,7 +1349,7 @@ export async function cleanAllMetadata(
     const ids = middle.scan.records.filter(record => isRemovable(record)).map(record => record.id);
     if (!removed && !ids.length) return { footprintResult: result('NOTHING_TO_REMOVE', 'No removable metadata') };
     if (ids.length) {
-      stage = await cleanImage(working, ids, true);
+      stage = await cleanImage(working, ids);
       removed += stage.removed;
       checks.push(...stage.checks);
     }
@@ -1398,14 +1391,9 @@ export async function cleanAllMetadata(
     return { footprintResult: result('VERIFICATION_FAILED', 'Atomic operation failed; no output released') };
   }
 }
-export async function verifyOutput(
-  data: Uint8Array,
-  output: Uint8Array,
-  ids: string[],
-  rightsConsent: boolean,
-): Promise<CleanResult> {
+export async function verifyOutput(data: Uint8Array, output: Uint8Array, ids: string[]): Promise<CleanResult> {
   const before = parse(data);
-  const selected = selection(before, ids, rightsConsent);
+  const selected = selection(before, ids);
   const retained = before.parts.filter(p => !p.record || !selected.has(p.record.id));
   const removedKinds = new Set(before.parts.filter(p => p.record && selected.has(p.record.id)).map(p => p.kind));
   const after = parse(output);
