@@ -36,5 +36,5 @@ Tam komut listesi [`README.md`](README.md) içindedir. Her değişiklikten sonra
 ## Dosya kuralları
 
 - Satır sonları LF (`.gitattributes`). `web/tests/*-acceptance.js` Prettier dışıdır ve sonunda `;` olmamalıdır (`browser_run_code` girdisi). Toplu biçimlendirme commit'leri `.git-blame-ignore-revs`'e eklenir.
-- `.kilo/` günlükleri ve `*.zip` yedekleri commit'lenmez.
+- `*.zip` yedekleri commit'lenmez.
 - Eski Python masaüstü uygulaması ana daldan kaldırıldı; son hâli `b41b838` commit'inde (`git show b41b838:main.py`).
